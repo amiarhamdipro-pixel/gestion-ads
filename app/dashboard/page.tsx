@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { logout } from './actions'
+import SyncMetaButton from './SyncMetaButton'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -35,6 +36,7 @@ export default async function DashboardPage() {
       <p>Connecté en tant que : {user.email}</p>
       <p>Rôle : {profile?.role ?? 'inconnu'}</p>
       <p>Client associé : {clientName ?? '—'}</p>
+      {profile?.role === 'admin' ? <SyncMetaButton /> : null}
       <form action={logout}>
         <button type="submit">Se déconnecter</button>
       </form>
