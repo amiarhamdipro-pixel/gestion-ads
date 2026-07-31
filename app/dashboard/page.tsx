@@ -4,6 +4,7 @@ import { costPerMetaPixelLead } from '@/lib/calculations'
 import { logout } from './actions'
 import SyncMetaButton from './SyncMetaButton'
 import OverviewChart from './OverviewChart'
+import EndDateEditor from './EndDateEditor'
 
 // Palette reprise de dashboard-maquette_1.html (vue d'ensemble), sans copier
 // sa feuille de style : couleurs et rayons approximés en inline styles.
@@ -176,6 +177,13 @@ export default async function DashboardPage() {
                   <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
                     {formatPeriod(campaign.start_date, campaign.end_date)}
                   </div>
+                  {profile?.role === 'admin' ? (
+                    <EndDateEditor
+                      campaignId={campaign.id}
+                      startDate={campaign.start_date}
+                      initialEndDate={campaign.end_date}
+                    />
+                  ) : null}
                 </div>
                 <div style={{ fontWeight: 500, fontSize: 15 }}>{formatEur(campaign.meta_spend)} €</div>
                 <div style={{ fontWeight: 500, fontSize: 15 }}>{campaign.meta_pixel_leads}</div>

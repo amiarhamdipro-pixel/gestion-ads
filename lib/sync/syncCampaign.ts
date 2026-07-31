@@ -7,8 +7,11 @@
 // Limite connue : supabase-js n'expose pas de transaction multi-requêtes côté
 // client JS. Une atomicité DB stricte nécessiterait une fonction SQL (RPC)
 // dédiée — hors périmètre ici. Les champs de saisie manuelle
-// (calendly_appointments, manual_appointments_adjustment) ne sont jamais
-// écrasés par cette fonction : ils sont omis du payload d'upsert campagne.
+// (calendly_appointments, manual_appointments_adjustment, end_date) ne sont
+// jamais écrasés par cette fonction : ils sont omis du payload d'upsert
+// campagne. Meta ne renvoie jamais de end_time/stop_time fiable sur les ad
+// sets de ce compte (vérifié) ; end_date reste donc une saisie admin exclusive
+// (voir app/api/admin/campaigns/end-date/route.ts).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAdInsights, fetchAdSetAds, fetchAdSetInsights, fetchCampaignAdSets } from './meta'
@@ -31,10 +34,6 @@ function earliestDate(a: string | null, b: string | null): string | null {
   if (!a) return b
   if (!b) return a
   return a < b ? a : b
-}
-
-function latestDateIfBothPresent(a: string | null, b: string | null): string | null {
-  return a && b ? (a > b ? a : b) : null
 }
 
 // Journalisation dans sync_runs (schéma existant, non modifié) : une ligne par
@@ -125,8 +124,6 @@ async function runSync(
 
   const barbierStart = toDateOnly(barbierAdSet.start_time)
   const coiffeurStart = toDateOnly(coiffeurAdSet.start_time)
-  const barbierEnd = toDateOnly(barbierAdSet.end_time)
-  const coiffeurEnd = toDateOnly(coiffeurAdSet.end_time)
 
   const { data: campaign, error: campaignError } = await supabase
     .from('campaigns')
@@ -138,7 +135,6 @@ async function runSync(
         name: `Campagne n°${campaignNumber}`,
         status: mergeStatus(barbierAdSet.status, coiffeurAdSet.status),
         start_date: earliestDate(barbierStart, coiffeurStart),
-        end_date: latestDateIfBothPresent(barbierEnd, coiffeurEnd),
         meta_spend: barbierAudienceData.meta_spend + coiffeurAudienceData.meta_spend,
         meta_pixel_leads: barbierAudienceData.meta_pixel_leads + coiffeurAudienceData.meta_pixel_leads,
       },
