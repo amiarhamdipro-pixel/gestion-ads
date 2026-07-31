@@ -15,6 +15,13 @@ export function trackingGap(realAppointmentsCount: number, metaPixelLeads: numbe
   return realAppointmentsCount - metaPixelLeads
 }
 
+// Coût pixel, PAS le coût réel (dépensé ÷ RDV Calendly, cf. realCostPerAppointment) :
+// utile tant que Calendly n'est pas branché, à ne jamais présenter comme le coût/lead réel.
+export function costPerMetaPixelLead(metaSpend: number, metaPixelLeads: number): number | null {
+  if (metaPixelLeads <= 0) return null
+  return metaSpend / metaPixelLeads
+}
+
 export function campaignDurationDays(startDate: string | null, endDate: string | null): number | null {
   if (!startDate || !endDate) return null
 
