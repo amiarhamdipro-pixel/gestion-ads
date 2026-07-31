@@ -2,14 +2,20 @@
 
 import { useState } from 'react'
 
+type SyncReport = {
+  totalDetected: number
+  succeeded: number
+  failed: number
+  invalid: { campaignNumber: number; reason: string }[]
+}
+
 type SyncState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'success'; message: string }
+  | { status: 'success'; report: SyncReport }
   | { status: 'error'; message: string }
 
 export default function SyncMetaButton() {
-  const [campaignNumber, setCampaignNumber] = useState(20)
   const [state, setState] = useState<SyncState>({ status: 'idle' })
 
   const isSyncing = state.status === 'loading'
@@ -19,11 +25,7 @@ export default function SyncMetaButton() {
     setState({ status: 'loading' })
 
     try {
-      const response = await fetch('/api/admin/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignNumber }),
-      })
+      const response = await fetch('/api/admin/sync', { method: 'POST' })
       const body = await response.json().catch(() => null)
 
       if (!response.ok) {
@@ -31,12 +33,7 @@ export default function SyncMetaButton() {
         return
       }
 
-      setState({
-        status: 'success',
-        message:
-          `Campagne "${body.campaign.name}" synchronisée : ` +
-          `${body.counts.audiences} audience(s), ${body.counts.videos} vidéo(s).`,
-      })
+      setState({ status: 'success', report: body })
     } catch {
       setState({ status: 'error', message: 'Échec de la synchronisation.' })
     }
@@ -44,20 +41,15 @@ export default function SyncMetaButton() {
 
   return (
     <div style={{ marginTop: '1.5rem' }}>
-      <label>
-        Numéro de campagne
-        <input
-          type="number"
-          value={campaignNumber}
-          onChange={(e) => setCampaignNumber(Number(e.target.value))}
-          disabled={isSyncing}
-          style={{ marginLeft: '0.5rem', width: '5rem' }}
-        />
-      </label>
-      <button type="button" onClick={handleSync} disabled={isSyncing} style={{ marginLeft: '0.5rem' }}>
-        {isSyncing ? 'Synchronisation...' : 'Synchroniser Meta'}
+      <button type="button" onClick={handleSync} disabled={isSyncing}>
+        {isSyncing ? 'Synchronisation en cours...' : 'Synchroniser toutes les campagnes'}
       </button>
-      {state.status === 'success' ? <p style={{ color: 'green' }}>{state.message}</p> : null}
+      {state.status === 'success' ? (
+        <p>
+          Campagnes traitées : {state.report.totalDetected} · Succès : {state.report.succeeded} · Échecs :{' '}
+          {state.report.failed} · Groupes invalides : {state.report.invalid.length}
+        </p>
+      ) : null}
       {state.status === 'error' ? <p style={{ color: 'crimson' }}>{state.message}</p> : null}
     </div>
   )
