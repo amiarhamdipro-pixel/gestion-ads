@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { costPerMetaPixelLead } from '@/lib/calculations'
 import { logout } from './actions'
@@ -71,7 +72,12 @@ export default async function DashboardPage() {
 
       {isAdmin ? <SyncMetaButton /> : null}
 
-      <h1 style={{ fontWeight: 600, fontSize: 23, marginTop: 24 }}>Vue d&apos;ensemble</h1>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginTop: 24 }}>
+        <h1 style={{ fontWeight: 600, fontSize: 23 }}>Vue d&apos;ensemble</h1>
+        <Link href="/dashboard/comparison" style={{ marginLeft: 'auto', fontSize: 12.5, color: accent, textDecoration: 'none' }}>
+          Comparaison →
+        </Link>
+      </div>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 3 }}>
         {campaigns.length} campagne{campaigns.length > 1 ? 's' : ''}
       </p>
