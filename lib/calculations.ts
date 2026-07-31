@@ -44,6 +44,11 @@ export function spendPerDay(metaSpend: number, durationDays: number | null): num
   return metaSpend / durationDays
 }
 
+export function metaPixelLeadsPerDay(metaPixelLeads: number, durationDays: number | null): number | null {
+  if (!durationDays || durationDays <= 0) return null
+  return metaPixelLeads / durationDays
+}
+
 export function hookRatePlay(videoPlays: number, impressions: number): number | null {
   if (impressions <= 0) return null
   return videoPlays / impressions
