@@ -57,3 +57,13 @@ export type SyncCampaignResult = {
   audiences: Audience[]
   videos: Video[]
 }
+
+export type InvalidCampaignGroup = {
+  campaignNumber: number
+  reason: string
+}
+
+export type CampaignNumberDiscovery = {
+  valid: number[]
+  invalid: InvalidCampaignGroup[]
+}
