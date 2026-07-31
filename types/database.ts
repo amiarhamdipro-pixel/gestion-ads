@@ -107,8 +107,34 @@ export interface Database {
       }
       campaigns: {
         Row: Campaign
-        Insert: Partial<Pick<Campaign, 'id' | 'created_at' | 'updated_at'>> &
-          Omit<Campaign, 'id' | 'created_at' | 'updated_at'>
+        // start_date/end_date/status (nullable) et calendly_appointments/
+        // manual_appointments_adjustment (saisie manuelle, jamais dérivés de Meta)
+        // sont optionnels à l'insert : la synchro Meta ne doit jamais les écraser
+        // en les omettant du payload d'upsert (lib/sync/syncCampaign.ts).
+        Insert: Partial<
+          Pick<
+            Campaign,
+            | 'id'
+            | 'created_at'
+            | 'updated_at'
+            | 'start_date'
+            | 'end_date'
+            | 'status'
+            | 'calendly_appointments'
+            | 'manual_appointments_adjustment'
+          >
+        > &
+          Omit<
+            Campaign,
+            | 'id'
+            | 'created_at'
+            | 'updated_at'
+            | 'start_date'
+            | 'end_date'
+            | 'status'
+            | 'calendly_appointments'
+            | 'manual_appointments_adjustment'
+          >
         Update: Partial<Campaign>
         Relationships: []
       }

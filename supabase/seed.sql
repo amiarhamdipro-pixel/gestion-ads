@@ -1,9 +1,12 @@
--- Ce fichier ne contient volontairement aucune donnée : pas d'UUID inventé,
--- pas d'utilisateur fictif, pas de secret. Il documente la procédure manuelle
--- à suivre une fois le schéma (migrations/) appliqué sur le projet Supabase.
+-- Ce fichier ne contient volontairement aucune donnée fictive, aucun
+-- utilisateur, aucun secret. Le seul insert exécutable (client réel, nom
+-- public non sensible) est idempotent via ON CONFLICT (slug) : un rejeu ne
+-- crée pas de doublon et ne modifie pas l'id déjà attribué par la base.
 
--- 1. Créer le client "Formation Barbier" :
---    insert into public.clients (name, slug) values ('Formation Barbier', 'formation-barbier');
+-- 1. Client "Formation Barbier" :
+insert into public.clients (name, slug)
+values ('Formation Barbier', 'formation-barbier')
+on conflict (slug) do nothing;
 
 -- 2. Créer un utilisateur Supabase Auth (email/mot de passe) depuis le
 --    Dashboard Supabase (Authentication > Users > Add user), ou via l'API

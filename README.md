@@ -45,11 +45,19 @@ npm run build
 ```
 
 ## Migrations Supabase
-Le schéma vit dans `supabase/migrations/` (SQL brut, idempotent). Principe :
-appliquer les fichiers dans l'ordre de leur préfixe (horodatage) sur le projet
-Supabase cible, via le SQL Editor du dashboard Supabase ou la Supabase CLI
-(`supabase db push`) si elle est configurée. Aucune migration n'est appliquée
-automatiquement par ce dépôt.
+Le schéma vit dans `supabase/migrations/` (SQL brut, idempotent). La CLI
+Supabase est configurée (`supabase/config.toml`, `supabase` en devDependency) :
+
+```
+npx supabase login                              # authentification (unique, interactive)
+npx supabase link --project-ref <project-ref>    # une fois, relie ce dossier au projet distant
+npx supabase db push --linked                    # applique les migrations non encore jouées
+npx supabase db push --linked --include-seed     # applique aussi supabase/seed.sql
+```
+
+`<project-ref>` : identifiant du projet, visible dans l'URL du dashboard
+Supabase (`https://supabase.com/dashboard/project/<project-ref>`). Aucune
+migration n'est appliquée automatiquement par ce dépôt.
 
 ## Création des utilisateurs
 Pas d'inscription publique : les comptes sont créés manuellement depuis le

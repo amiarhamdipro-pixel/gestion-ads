@@ -88,6 +88,23 @@ code a changé depuis) :
 - Aucune mise en ligne effectuée : le projet reste local (pas de Vercel, pas de
   déploiement Supabase). La mise en ligne reste prévue en **Phase 4**.
 
+**Phase 2 — Synchro : en cours.**
+- `lib/sync/` : lecture Meta (`meta.ts`), regroupement par numéro
+  (`groupByCampaign.ts`), mapping vers les lignes Supabase (`mapper.ts`),
+  orchestrateur `syncCampaign(params)` (`syncCampaign.ts`) qui upserte
+  Campagne → Audiences → Vidéos de façon idempotente (clés externes stables :
+  `client_id`+`campaign_number`, `meta_adset_id`, `meta_ad_id`).
+- Testé en conditions réelles côté Meta uniquement (`scripts/test-meta-sync.ts`,
+  campagne n°20 : 2 audiences, 2 pubs, stats vidéo exploitables).
+- **Non testé en écriture réelle** : aucun projet Supabase n'est encore
+  configuré (`.env` ne contient toujours aucune variable `SUPABASE_*`/
+  `NEXT_PUBLIC_SUPABASE_*`). Reste à faire avant un premier run complet :
+  créer le projet Supabase, appliquer la migration, renseigner `.env`, créer
+  la ligne `clients` (Formation Barbier) via `supabase/seed.sql`.
+- Calendly toujours non branché : `calendly_appointments` et
+  `manual_appointments_adjustment` restent à 0 (défaut DB) tant que la
+  synchro Calendly n'existe pas ; `syncCampaign` ne les écrase jamais.
+
 ## 6. Tâche immédiate
 
 1. **Audit** du dossier : confirme la présence de `meta-test.mjs`, la version de
