@@ -72,7 +72,10 @@ async function metaApiGetAll<T>(path: string, params: Record<string, string>): P
 }
 
 export async function fetchCampaignAdSets(metaCampaignId: string): Promise<MetaAdSet[]> {
-  return metaApiGetAll<MetaAdSet>(`${metaCampaignId}/adsets`, { fields: 'id,name,status', limit: '200' })
+  return metaApiGetAll<MetaAdSet>(`${metaCampaignId}/adsets`, {
+    fields: 'id,name,status,start_time,end_time',
+    limit: '200',
+  })
 }
 
 export async function fetchAdSetInsights(

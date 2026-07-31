@@ -14,6 +14,8 @@ export type MetaAdSet = {
   id: string
   name: string
   status: string
+  start_time?: string
+  end_time?: string
 }
 
 export type MetaAdSetInsights = {

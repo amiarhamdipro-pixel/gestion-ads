@@ -73,10 +73,10 @@ les pubs sont préfixés d'un **numéro** (18, 19, 20…) toujours incrémenté 
 - Regroupement par numéro validé : le préfixe `20` isole exactement 2 ad sets
   (Barbier + Coiffeur), conforme à la règle métier.
 - Stats vidéo (impressions, plays, thruplays, rétention) disponibles au niveau pub.
-- `LEAD_ACTION_TYPE` **non figé** : candidat le plus probable observé —
-  `offsite_conversion.custom.4312192355693474` — à confirmer manuellement
-  (Gestionnaire d'événements Meta, conversions personnalisées) avant de
-  l'utiliser dans la synchro.
+- `LEAD_ACTION_TYPE` **confirmé** : `offsite_conversion.custom.4312192355693474`,
+  vérifié par correspondance exacte de nom sur les conversions personnalisées
+  du compte Meta (« Lead - Confirmation de RDV by Amerys Agency »). Figé dans
+  `.env` et requis par `scripts/test-meta-sync.ts` (erreur explicite si absent).
 
 **Phase 1 — Fondations : réalisée**, sous réserve des tests effectivement
 réussis en local (lint/build OK au moment de la rédaction ; à revalider si le
@@ -96,11 +96,19 @@ code a changé depuis) :
   `client_id`+`campaign_number`, `meta_adset_id`, `meta_ad_id`).
 - Testé en conditions réelles côté Meta uniquement (`scripts/test-meta-sync.ts`,
   campagne n°20 : 2 audiences, 2 pubs, stats vidéo exploitables).
-- **Non testé en écriture réelle** : aucun projet Supabase n'est encore
-  configuré (`.env` ne contient toujours aucune variable `SUPABASE_*`/
-  `NEXT_PUBLIC_SUPABASE_*`). Reste à faire avant un premier run complet :
-  créer le projet Supabase, appliquer la migration, renseigner `.env`, créer
-  la ligne `clients` (Formation Barbier) via `supabase/seed.sql`.
+- Projet Supabase configuré : migration appliquée (`supabase db push --linked`),
+  seed exécuté (client `formation-barbier` créé, une seule ligne, id stable),
+  `.env` renseigné (URL racine, clés anon/service role).
+- **Bloquant découvert lors du test de connexion lecture seule**
+  (`scripts/test-supabase-read.ts`) : `permission denied for table clients`.
+  Cause identifiée — la migration initiale n'accorde aucun `GRANT` explicite
+  aux rôles `anon`/`authenticated`/`service_role` sur les 7 tables ; seul le
+  rôle `postgres` a les privilèges SELECT/INSERT/UPDATE/DELETE. Le projet
+  Supabase ne les expose pas automatiquement (comportement par défaut actuel,
+  cf. `auto_expose_new_tables` dans `supabase/config.toml`). **Toutes les
+  tables sont donc inaccessibles via l'API Data (et `syncCampaign`) tant
+  qu'une migration corrective n'ajoute pas les `GRANT` nécessaires** — non
+  fait ici (hors périmètre : « ne pas toucher migrations/schéma »).
 - Calendly toujours non branché : `calendly_appointments` et
   `manual_appointments_adjustment` restent à 0 (défaut DB) tant que la
   synchro Calendly n'existe pas ; `syncCampaign` ne les écrase jamais.
