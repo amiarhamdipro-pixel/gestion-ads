@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { costPerMetaPixelLead } from '@/lib/calculations'
 import { logout } from './actions'
 import SyncMetaButton from './SyncMetaButton'
+import OverviewChart from './OverviewChart'
 
 // Palette reprise de dashboard-maquette_1.html (vue d'ensemble), sans copier
 // sa feuille de style : couleurs et rayons approximés en inline styles.
@@ -131,6 +132,10 @@ export default async function DashboardPage() {
               value={formatCost(avgCostPerLead)}
               foot="dépensé ÷ leads Meta (pixel)"
             />
+          </div>
+
+          <div style={{ margin: '20px 0' }}>
+            <OverviewChart campaigns={campaigns} />
           </div>
 
           <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
