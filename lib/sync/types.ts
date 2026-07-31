@@ -48,7 +48,7 @@ export type SyncCampaignParams = {
   clientId: string
   metaCampaignId: string
   campaignNumber: number
-  // Candidat non confirmé (voir BRIEF section 5) : offsite_conversion.custom.4312192355693474
+  // Confirmé (voir BRIEF section 5) : offsite_conversion.custom.4312192355693474
   leadActionType?: string
 }
 

@@ -20,10 +20,89 @@ function mergeStatus(statusA: string, statusB: string): string {
   return statusA === statusB ? statusA : 'MIXED'
 }
 
+// Meta renvoie des datetime ISO ("2026-07-18T22:30:00+0200") ; la colonne
+// campaigns.start_date/end_date est de type date — on ne garde que la partie
+// calendaire, sans conversion de fuseau horaire.
+function toDateOnly(isoDateTime: string | undefined): string | null {
+  return isoDateTime ? isoDateTime.slice(0, 10) : null
+}
+
+function earliestDate(a: string | null, b: string | null): string | null {
+  if (!a) return b
+  if (!b) return a
+  return a < b ? a : b
+}
+
+function latestDateIfBothPresent(a: string | null, b: string | null): string | null {
+  return a && b ? (a > b ? a : b) : null
+}
+
+// Journalisation dans sync_runs (schéma existant, non modifié) : une ligne par
+// tentative. error_message reste réservé aux échecs (null en cas de succès).
+async function startSyncRun(
+  supabase: ReturnType<typeof createAdminClient>,
+  clientId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('sync_runs')
+    .insert({ client_id: clientId, started_by: null, status: 'running' })
+    .select('id')
+    .single()
+
+  if (error || !data) {
+    throw new Error(`Échec création sync_run : ${error?.message ?? 'réponse vide'}`)
+  }
+
+  return data.id
+}
+
+async function finishSyncRun(
+  supabase: ReturnType<typeof createAdminClient>,
+  syncRunId: string,
+  status: 'success' | 'failed',
+  message: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('sync_runs')
+    .update({ status, finished_at: new Date().toISOString(), error_message: message })
+    .eq('id', syncRunId)
+
+  if (error) {
+    // Ne masque pas l'erreur/succès principal de syncCampaign : simple trace.
+    console.error(`Échec mise à jour sync_run ${syncRunId} : ${error.message}`)
+  }
+}
+
 export async function syncCampaign(params: SyncCampaignParams): Promise<SyncCampaignResult> {
   const { clientId, metaCampaignId, campaignNumber, leadActionType = '' } = params
   const supabase = createAdminClient()
 
+  const syncRunId = await startSyncRun(supabase, clientId)
+
+  try {
+    const result = await runSync(supabase, { clientId, metaCampaignId, campaignNumber, leadActionType })
+
+    await finishSyncRun(supabase, syncRunId, 'success', null)
+
+    return result
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    await finishSyncRun(supabase, syncRunId, 'failed', message)
+    throw error
+  }
+}
+
+type RunSyncParams = {
+  clientId: string
+  metaCampaignId: string
+  campaignNumber: number
+  leadActionType: string
+}
+
+async function runSync(
+  supabase: ReturnType<typeof createAdminClient>,
+  { clientId, metaCampaignId, campaignNumber, leadActionType }: RunSyncParams
+): Promise<SyncCampaignResult> {
   const adSets = await fetchCampaignAdSets(metaCampaignId)
   const group = groupByCampaignNumber(adSets, campaignNumber)
 
@@ -44,6 +123,11 @@ export async function syncCampaign(params: SyncCampaignParams): Promise<SyncCamp
   const barbierAudienceData = mapAdSetToAudienceInsert('', barbierAdSet, barbierInsights, leadActionType)
   const coiffeurAudienceData = mapAdSetToAudienceInsert('', coiffeurAdSet, coiffeurInsights, leadActionType)
 
+  const barbierStart = toDateOnly(barbierAdSet.start_time)
+  const coiffeurStart = toDateOnly(coiffeurAdSet.start_time)
+  const barbierEnd = toDateOnly(barbierAdSet.end_time)
+  const coiffeurEnd = toDateOnly(coiffeurAdSet.end_time)
+
   const { data: campaign, error: campaignError } = await supabase
     .from('campaigns')
     .upsert(
@@ -53,6 +137,8 @@ export async function syncCampaign(params: SyncCampaignParams): Promise<SyncCamp
         campaign_number: campaignNumber,
         name: `Campagne n°${campaignNumber}`,
         status: mergeStatus(barbierAdSet.status, coiffeurAdSet.status),
+        start_date: earliestDate(barbierStart, coiffeurStart),
+        end_date: latestDateIfBothPresent(barbierEnd, coiffeurEnd),
         meta_spend: barbierAudienceData.meta_spend + coiffeurAudienceData.meta_spend,
         meta_pixel_leads: barbierAudienceData.meta_pixel_leads + coiffeurAudienceData.meta_pixel_leads,
       },
