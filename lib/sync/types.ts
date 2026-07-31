@@ -67,3 +67,21 @@ export type CampaignNumberDiscovery = {
   valid: number[]
   invalid: InvalidCampaignGroup[]
 }
+
+export type SyncAllCampaignsParams = {
+  clientId: string
+  metaCampaignId: string
+  leadActionType?: string
+}
+
+export type CampaignSyncOutcome =
+  | { campaignNumber: number; status: 'success'; result: SyncCampaignResult }
+  | { campaignNumber: number; status: 'failed'; message: string }
+
+export type SyncAllCampaignsReport = {
+  totalDetected: number
+  succeeded: number
+  failed: number
+  invalid: InvalidCampaignGroup[]
+  details: CampaignSyncOutcome[]
+}
