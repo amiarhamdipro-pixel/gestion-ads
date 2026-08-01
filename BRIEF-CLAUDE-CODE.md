@@ -278,8 +278,30 @@ code a changé depuis) :
   atteint la limite de débit Meta (code 17) après 7 campagnes et s'est arrêté
   immédiatement comme prévu, sans tenter les suivantes — confirmation en
   conditions réelles, pas seulement en théorie. Aucune UI ne lit encore cette
-  table ; le filtre de période (ci-dessus) pourra s'en servir une fois une
-  synchro quotidienne Calendly ajoutée symétriquement (hors périmètre ici).
+  table.
+- **Synchro Calendly quotidienne codée et testée en conditions réelles**
+  (`lib/calculations.ts` : `parisDateFromInstant`, direction inverse de
+  `parisDateToUtcMs`, même fuseau Europe/Paris ; `lib/sync/syncCalendlyDailyStats.ts` :
+  agrège les rendez-vous déjà synchronisés — `appointments.status='active'`,
+  `campaign_id` non nul, aucun appel Calendly direct, aucune donnée
+  personnelle lue — par `(campaign_id, stat_date)`). Contrairement à la
+  synchro Meta (qui n'insère que les jours retournés par l'API), celle-ci
+  remet aussi à 0 les jours déjà en base qui n'ont plus de rendez-vous actif
+  (rendez-vous annulé ou détaché depuis) : le jeu de lignes upsertées est
+  l'union des jours réellement comptés et des jours déjà existants pour le
+  client. `calendly_appointments` est le seul champ écrit ; `meta_spend`/
+  `meta_pixel_leads` toujours omis du payload, jamais écrasés. Validé en
+  conditions réelles (`scripts/test-sync-calendly-daily-stats.ts`, fenêtre
+  témoin campagne n°19, 2026-06-30 → 2026-07-17, même fenêtre que
+  `test-sync-appointments.ts`) : 49 rendez-vous réellement rattachés, somme
+  journalière Calendly = 49 (égalité stricte), colonnes Meta des 13 jours
+  déjà existants strictement inchangées, second run idempotent (mêmes ids,
+  mêmes valeurs), puis restauration complète (rendez-vous détachés via
+  `syncAppointments()`, compteurs journaliers remis à 0 par
+  `syncCalendlyDailyStats()` elle-même — jamais de DELETE/UPDATE manuel).
+  Avec `campaign_daily_stats` désormais alimentée des deux côtés (Meta et
+  Calendly), le filtre de période pourra être réimplémenté sur cette base
+  dans une tâche dédiée (toujours hors périmètre ici : aucune UI touchée).
 
 ## 6. Tâche immédiate
 

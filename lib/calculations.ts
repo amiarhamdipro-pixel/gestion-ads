@@ -145,3 +145,17 @@ export function campaignsMatchingAppointment(campaigns: CampaignWindow[], startT
     })
     .map((campaign) => campaign.id)
 }
+
+// Date calendaire (YYYY-MM-DD) en heure locale Europe/Paris pour un instant
+// donné — direction inverse de parisDateToUtcMs. Utilisé pour convertir
+// appointments.start_time en "date métier" (lib/sync/syncCalendlyDailyStats.ts),
+// même fuseau que campaignsMatchingAppointment ci-dessus.
+export function parisDateFromInstant(instant: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  return formatter.format(new Date(instant))
+}
