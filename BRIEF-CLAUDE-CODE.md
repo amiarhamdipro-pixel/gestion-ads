@@ -46,9 +46,13 @@ les pubs sont préfixés d'un **numéro** (18, 19, 20…) toujours incrémenté 
 - **API Meta Marketing** (lecture seule) : dépensé, leads pixel, stats vidéo
   (vues, accroche, rétention), répartition âge / plateforme. Lues au niveau
   **ad set** (agrégées par numéro) et **pub** (vidéos).
-- **API Calendly** (à brancher plus tard) : nombre réel de rendez-vous + la
-  plateforme (Instagram / Facebook) via un sélecteur du formulaire. **Source de
-  vérité** pour les rendez-vous.
+- **API Calendly** (accès validé, pas encore branché à la synchro) : nombre
+  réel de rendez-vous. **Source de vérité** pour les rendez-vous. Le formulaire
+  ne contient **pas** un sélecteur binaire Instagram/Facebook comme supposé
+  initialement, mais une question ouverte de **canal d'acquisition** (« Par
+  quel canal avez-vous découvert notre offre ? ») — valeurs observées sur
+  l'échantillon testé : **Instagram, TikTok, Google**. À traiter comme un
+  champ texte libre (`acquisition_channel`), pas comme une énumération figée.
 - **Saisie manuelle admin** : leads d'autres canaux + corrections éventuelles.
 
 ## 4. Règles de calcul clés
@@ -109,9 +113,40 @@ code a changé depuis) :
   tables sont donc inaccessibles via l'API Data (et `syncCampaign`) tant
   qu'une migration corrective n'ajoute pas les `GRANT` nécessaires** — non
   fait ici (hors périmètre : « ne pas toucher migrations/schéma »).
-- Calendly toujours non branché : `calendly_appointments` et
-  `manual_appointments_adjustment` restent à 0 (défaut DB) tant que la
-  synchro Calendly n'existe pas ; `syncCampaign` ne les écrase jamais.
+- Calendly toujours non branché à la synchro : `calendly_appointments` et
+  `manual_appointments_adjustment` restent à 0 (défaut DB) tant qu'elle
+  n'existe pas ; `syncCampaign` ne les écrase jamais.
+- **Accès Calendly validé** (`scripts/test-calendly.ts`, lecture seule) :
+  authentification réussie, 1 type d'événement actif, échantillon de
+  rendez-vous confirmés (`status=active`) récupéré. Écart constaté avec ce
+  brief : voir ci-dessus (canal d'acquisition ouvert, pas Instagram/Facebook
+  binaire). Aucune ventilation Barbier/Coiffeur côté Calendly (confirmé —
+  cohérent avec la section 4).
+- **Modèle de données étendu** pour les rendez-vous Calendly : migration
+  `supabase/migrations/20260801000000_appointments.sql` (table `appointments`,
+  idempotente via `calendly_event_uri` unique, cohérence client/campagne
+  garantie par FK composite `(campaign_id, client_id) -> campaigns(id, client_id)`,
+  RLS admin/CRUD + client/lecture seule). **Appliquée** au projet Supabase
+  distant (constaté lors du branchement de la synchro ci-dessous ;
+  `supabase migration list --linked` la montre à jour, table/colonnes/policies/
+  grants vérifiés conformes à la migration).
+- **Synchro Calendly -> `appointments` codée et testée en conditions réelles,
+  réellement différentielle** (`lib/calendly/client.ts`,
+  `lib/calendly/appointments.ts` : `fetchAppointments()` lecture seule,
+  pagination complète, statuts `active`/`canceled` uniquement ;
+  `lib/calendly/mapper.ts` ; orchestrateur `lib/sync/syncAppointments.ts`).
+  Chaque rendez-vous est comparé au préalable à la ligne existante
+  (`event_type_uri`, `start_time`, `status`, `acquisition_channel`,
+  `campaign_id`) ; seuls les créations/changements réels sont upsertés (par
+  lots de 50), un rendez-vous identique n'est pas réécrit. `campaign_id`
+  toujours `null` (aucun rapprochement Meta ici). `acquisition_channel` rempli
+  via la question de formulaire confirmée en Phase 0 (configurable via
+  `CALENDLY_ACQUISITION_CHANNEL_QUESTION`). Testé avec `scripts/test-sync-appointments.ts` :
+  1145 rendez-vous lus sur deux exécutions successives sans changement
+  Calendly ; 2e run un vrai no-op (0 création, 0 mise à jour, 1145 ignorés
+  car identiques), total en base stable, aucun `campaign_id` renseigné, 995
+  rendez-vous avec `acquisition_channel` renseigné. Aucune donnée personnelle
+  lue ni stockée (nom/email/téléphone/réponses libres).
 
 ## 6. Tâche immédiate
 

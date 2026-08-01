@@ -1,6 +1,7 @@
 export type UserRole = 'admin' | 'client'
 export type AudienceType = 'barbier' | 'coiffeur'
 export type SyncRunStatus = 'running' | 'success' | 'failed'
+export type AppointmentStatus = 'active' | 'canceled'
 
 export type Client = {
   id: string
@@ -87,6 +88,25 @@ export type SyncRun = {
   error_message: string | null
 }
 
+// Rendez-vous Calendly, source de vérité (voir BRIEF-CLAUDE-CODE.md section 3).
+// Volontairement sans nom/email/téléphone/réponses libres (donnée personnelle
+// non nécessaire). acquisition_channel est un canal ouvert (Instagram, TikTok,
+// Google observés — pas un sélecteur binaire Instagram/Facebook) ; aucune
+// ventilation Barbier/Coiffeur n'existe côté Calendly, campaign_id est donc
+// nullable et ne porte aucune répartition par audience.
+export type Appointment = {
+  id: string
+  client_id: string
+  campaign_id: string | null
+  calendly_event_uri: string
+  event_type_uri: string
+  start_time: string
+  status: AppointmentStatus
+  acquisition_channel: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Type minimal pour typer les clients Supabase (@supabase/supabase-js, @supabase/ssr).
 // Non généré par la CLI Supabase (CLI non configurée à ce stade) : à tenir à jour manuellement
 // si le schéma évolue.
@@ -164,6 +184,15 @@ export interface Database {
         Insert: Partial<Pick<SyncRun, 'id' | 'started_at' | 'finished_at' | 'error_message'>> &
           Omit<SyncRun, 'id' | 'started_at' | 'finished_at' | 'error_message'>
         Update: Partial<SyncRun>
+        Relationships: []
+      }
+      appointments: {
+        Row: Appointment
+        Insert: Partial<
+          Pick<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel'>
+        > &
+          Omit<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel'>
+        Update: Partial<Appointment>
         Relationships: []
       }
     }

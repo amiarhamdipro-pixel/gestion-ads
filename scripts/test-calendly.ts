@@ -6,6 +6,7 @@
 // Lance avec `npx tsx scripts/test-calendly.ts`.
 
 import { readFileSync } from 'node:fs'
+import { calendlyGet, lastPathSegment } from '../lib/calendly/client'
 import type {
   CalendlyCurrentUser,
   CalendlyEventType,
@@ -16,7 +17,6 @@ import type {
 } from '../lib/calendly/types'
 
 const REQUIRED_VARS = ['CALENDLY_ACCESS_TOKEN'] as const
-const BASE_URL = 'https://api.calendly.com'
 
 // Questions dont la réponse est une donnée personnelle : jamais affichées.
 const PERSONAL_QUESTION_PATTERN = /nom|prénom|email|e-mail|mail|téléphone|telephone|phone|adresse/i
@@ -47,30 +47,6 @@ function assertRequiredEnv(): void {
   if (missing.length > 0) {
     throw new Error(`Variable(s) manquante(s) dans .env : ${missing.join(', ')}`)
   }
-}
-
-async function calendlyGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const token = process.env.CALENDLY_ACCESS_TOKEN as string
-  const url = new URL(path.startsWith('http') ? path : `${BASE_URL}${path}`)
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value)
-  }
-
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-  })
-  const json: unknown = await response.json()
-
-  if (!response.ok) {
-    const err = json as { title?: string; message?: string }
-    throw new Error(`Calendly API — ${err.title ?? 'erreur'} : ${err.message ?? response.statusText} (HTTP ${response.status})`)
-  }
-
-  return json as T
-}
-
-function lastPathSegment(uri: string): string {
-  return uri.split('/').filter(Boolean).pop() ?? uri
 }
 
 async function main(): Promise<void> {
