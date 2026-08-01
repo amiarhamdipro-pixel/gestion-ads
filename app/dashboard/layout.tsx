@@ -36,6 +36,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   let clientName: string | null = null
   let lastSyncAt: string | null = null
+  let lastCalendlyModifiedAt: string | null = null
   if (profile?.client_id) {
     const { data: client } = await supabase
       .from('clients')
@@ -53,6 +54,25 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .limit(1)
       .maybeSingle()
     lastSyncAt = lastSync?.finished_at ?? null
+
+    // syncAppointments() (Calendly) n'écrit pas dans sync_runs — cette table
+    // est le journal des synchros Meta (une ligne par campagne, voir
+    // lib/sync/syncCampaign.ts) et n'a pas de colonne pour distinguer la
+    // source ; y ajouter des lignes Calendly fausserait "Dernière synchro
+    // Meta" sans modifier le schéma. Aucun journal dédié à Calendly n'existe
+    // pour l'instant : appointments.updated_at (colonne déjà existante) ne
+    // donne PAS l'horodatage d'une exécution de synchro (une synchro qui ne
+    // change rien n'avance pas cette valeur), seulement celui de la dernière
+    // écriture réelle sur un rendez-vous — d'où le libellé "Dernière
+    // modification Calendly" dans le header, pas "Dernière synchro".
+    const { data: lastAppointmentWrite } = await supabase
+      .from('appointments')
+      .select('updated_at')
+      .eq('client_id', profile.client_id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    lastCalendlyModifiedAt = lastAppointmentWrite?.updated_at ?? null
   }
 
   const isAdmin = profile?.role === 'admin'
@@ -102,7 +122,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       <input type="checkbox" id="amerys-menu" className="amerys-menu-input" aria-hidden="true" />
 
-      <Header clientName={clientName} role={profile?.role ?? null} isAdmin={isAdmin} lastSyncAt={lastSyncAt} />
+      <Header
+        clientName={clientName}
+        role={profile?.role ?? null}
+        isAdmin={isAdmin}
+        lastSyncAt={lastSyncAt}
+        lastCalendlyModifiedAt={lastCalendlyModifiedAt}
+      />
 
       <div className="amerys-body" style={{ display: 'flex', alignItems: 'flex-start' }}>
         <label htmlFor="amerys-menu" className="amerys-backdrop" aria-hidden="true" />

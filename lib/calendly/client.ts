@@ -24,10 +24,23 @@ export async function calendlyGet<T>(path: string, params: Record<string, string
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   })
-  const json: unknown = await response.json()
+
+  // Lu en texte d'abord : un corps vide (erreur sans JSON, limite de débit
+  // Calendly...) ferait échouer response.json() avec une SyntaxError opaque
+  // ("Unexpected end of JSON input") qui masque le vrai statut HTTP — observé
+  // en conditions réelles sur /invitees lors d'une synchro à grand volume.
+  const raw = await response.text()
+  let json: unknown = null
+  if (raw) {
+    try {
+      json = JSON.parse(raw)
+    } catch {
+      throw new Error(`Calendly API — réponse non-JSON (HTTP ${response.status} ${response.statusText}).`)
+    }
+  }
 
   if (!response.ok) {
-    const err = json as { title?: string; message?: string }
+    const err = (json ?? {}) as { title?: string; message?: string }
     throw new Error(
       `Calendly API — ${err.title ?? 'erreur'} : ${err.message ?? response.statusText} (HTTP ${response.status})`
     )

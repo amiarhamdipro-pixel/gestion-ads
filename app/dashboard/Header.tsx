@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
 import { ChevronDownIcon, ClockIcon, CrownIcon, UserIcon } from './icons'
 import SyncMetaButton from './SyncMetaButton'
+import SyncCalendlyButton from './SyncCalendlyButton'
 
 const roleLabel: Record<string, string> = {
   admin: 'Admin',
@@ -30,11 +31,13 @@ export default function Header({
   role,
   isAdmin,
   lastSyncAt,
+  lastCalendlyModifiedAt,
 }: {
   clientName: string | null
   role: string | null
   isAdmin: boolean
   lastSyncAt: string | null
+  lastCalendlyModifiedAt: string | null
 }) {
   return (
     <header style={{ background: headerBg, borderBottom: `1px solid ${onDarkLine}`, position: 'relative', zIndex: 60 }}>
@@ -102,6 +105,7 @@ export default function Header({
           </div>
 
           {isAdmin ? <SyncMetaButton /> : null}
+          {isAdmin ? <SyncCalendlyButton /> : null}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
@@ -111,6 +115,18 @@ export default function Header({
               </div>
               <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
                 {formatDateTime(lastSyncAt)}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 10, color: onDarkMuted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                Dernière modification Calendly
+              </div>
+              <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
+                {formatDateTime(lastCalendlyModifiedAt)}
               </div>
             </div>
           </div>
