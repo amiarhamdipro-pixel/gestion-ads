@@ -1,7 +1,16 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { campaignDurationDays, costPerMetaPixelLead, hookRatePlay, hookRateThruplay, retentionRate } from '@/lib/calculations'
+import {
+  campaignDurationDays,
+  costPerMetaPixelLead,
+  hookRatePlay,
+  hookRateThruplay,
+  realAppointments,
+  realCostPerAppointment,
+  retentionRate,
+  trackingGap,
+} from '@/lib/calculations'
 import KpiCard from '../../KpiCard'
 import {
   accent,
@@ -46,11 +55,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     notFound()
   }
 
+  const isAdmin = profile.role === 'admin'
+
   // La campagne doit appartenir exclusivement au client de l'utilisateur
   // authentifié : jamais un autre client, admin ou non.
   const { data: campaign } = await supabase
     .from('campaigns')
-    .select('id, campaign_number, start_date, end_date, status, meta_spend, meta_pixel_leads')
+    .select('id, campaign_number, start_date, end_date, status, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
     .eq('id', id)
     .eq('client_id', profile.client_id)
     .maybeSingle()
@@ -58,6 +69,27 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   if (!campaign) {
     notFound()
   }
+
+  // RDV réels rattachés à cette campagne : comptés directement dans
+  // appointments (status='active'), pas depuis campaigns.calendly_appointments
+  // qui reste à 0 par défaut (jamais écrit par la synchro).
+  const { count: calendlyAppointmentsCount, error: appointmentsCountError } = await supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', profile.client_id)
+    .eq('campaign_id', campaign.id)
+    .eq('status', 'active')
+
+  if (appointmentsCountError) {
+    console.error(`Échec comptage rendez-vous campagne ${campaign.id} : ${appointmentsCountError.message}`)
+  }
+
+  const realAppointmentsCount = realAppointments(
+    calendlyAppointmentsCount ?? 0,
+    campaign.manual_appointments_adjustment
+  )
+  const realCostPerAppt = realCostPerAppointment(campaign.meta_spend, realAppointmentsCount)
+  const trackingGapValue = trackingGap(realAppointmentsCount, campaign.meta_pixel_leads)
 
   const { data: audiences } = await supabase
     .from('audiences')
@@ -130,14 +162,34 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, margin: '20px 0' }}>
         <KpiCard label="Budget dépensé" color={spendColor} value={`${formatEur(campaign.meta_spend)} €`} />
-        <KpiCard label="Leads Meta" color={accent} value={String(campaign.meta_pixel_leads)} foot="conversions pixel" />
-        <KpiCard label="Coût / lead" color={ink} value={formatCost(costPerLead)} foot="dépensé ÷ leads Meta (pixel)" />
+        <KpiCard
+          label="RDV confirmés"
+          color={accent}
+          value={String(realAppointmentsCount)}
+          foot="rendez-vous Calendly rattachés"
+        />
+        <KpiCard label="Coût réel / RDV" color={ink} value={formatCost(realCostPerAppt)} foot="dépensé ÷ RDV Calendly" />
         <KpiCard
           label="Durée"
           color={good}
           value={duration !== null ? `${duration} j` : '—'}
           foot={duration === null ? 'non disponible' : undefined}
         />
+        <KpiCard label="Leads Meta" color={accent} value={String(campaign.meta_pixel_leads)} foot="conversions pixel" />
+        <KpiCard
+          label="Coût / lead"
+          color={ink}
+          value={formatCost(costPerLead)}
+          foot="dépensé ÷ leads Meta (pixel)"
+        />
+        {isAdmin ? (
+          <KpiCard
+            label="Écart de tracking"
+            color={muted}
+            value={String(trackingGapValue)}
+            foot="RDV Calendly − leads Meta"
+          />
+        ) : null}
       </div>
 
       <div style={{ marginTop: 30, marginBottom: 14 }}>

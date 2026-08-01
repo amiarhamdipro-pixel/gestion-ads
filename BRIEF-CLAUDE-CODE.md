@@ -171,6 +171,33 @@ code a changé depuis) :
   jour, 1145 ignorés). Base finale strictement identique à l'état initial
   (1145 rendez-vous, 0 `campaign_id` non nul). Aucune donnée personnelle
   lue ni stockée (nom/email/téléphone/réponses libres).
+- **Dashboard branché sur les RDV Calendly réels** (`app/dashboard/page.tsx`,
+  `OverviewSection.tsx`, `campaigns/[id]/page.tsx`). RDV comptés directement
+  dans `appointments` (`status='active'`, `campaign_id` rattaché) — jamais
+  depuis `campaigns.calendly_appointments`, resté à 0 (jamais écrit par la
+  synchro). Vue d'ensemble : « Total leads Meta » remplacé par « Total
+  rendez-vous » (RDV réels = RDV Calendly + `manual_appointments_adjustment`,
+  sommés sur les campagnes du client), coût moyen recalculé sur dépensé ÷ RDV
+  Calendly (leads Meta gardés en note secondaire sous le total). Liste des
+  campagnes : colonnes RDV Calendly / coût réel par RDV (mode Par jour :
+  RDV/jour, via `appointmentsPerDay` déjà existante). Détail campagne :
+  ajout RDV confirmés + coût réel/RDV, écart de tracking (RDV réels − leads
+  Meta) visible **admin uniquement** (`isAdmin`, cohérent avec le reste du
+  dashboard) ; cartes Barbier/Coiffeur inchangées (coût/lead pixel Meta,
+  aucune ventilation Calendly par audience — Calendly ne la fournit pas).
+  Zéro RDV → `—` (jamais `Infinity`/`NaN`, `realCostPerAppointment` retourne
+  déjà `null` dans ce cas). Aucune fonction ajoutée à `lib/calculations.ts` :
+  `realAppointments`, `realCostPerAppointment`, `trackingGap`,
+  `appointmentsPerDay` existaient déjà (construites par anticipation lors
+  des fondations), seul leur branchement dans les pages était manquant.
+  Validé en conditions réelles (serveur local, sessions admin/client
+  temporaires) avec la même fenêtre témoin que ci-dessus (campagne n°19,
+  49 RDV réels au moment du test — le nombre évolue avec Calendly) : totaux
+  et coût réel corrects sur la vue d'ensemble (admin et client), RDV
+  confirmés + coût réel corrects sur le détail (admin et client), écart de
+  tracking affiché pour l'admin et confirmé **absent** du HTML pour le
+  client, puis restauration complète (`end_date` et `campaign_id` revenus à
+  l'état initial, vérifié indépendamment en base).
 
 ## 6. Tâche immédiate
 

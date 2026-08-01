@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { costPerMetaPixelLead } from '@/lib/calculations'
+import { realAppointments, realCostPerAppointment } from '@/lib/calculations'
 import { logout } from './actions'
 import SyncMetaButton from './SyncMetaButton'
 import OverviewSection from './OverviewSection'
@@ -42,26 +42,51 @@ export default async function DashboardPage() {
     end_date: string | null
     meta_spend: number
     meta_pixel_leads: number
+    manual_appointments_adjustment: number
+    calendlyAppointments: number
   }[] = []
   let campaignsError: string | null = null
 
   if (profile?.client_id) {
     const { data, error } = await supabase
       .from('campaigns')
-      .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads')
+      .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
     if (error) {
       campaignsError = error.message
     } else {
-      campaigns = data ?? []
+      const loaded = data ?? []
+      // RDV réels par campagne : comptés directement dans appointments
+      // (status='active', campaign_id rattaché) plutôt que lus depuis
+      // campaigns.calendly_appointments, qui reste à 0 par défaut (jamais
+      // écrit par la synchro, voir BRIEF-CLAUDE-CODE.md section 5).
+      const counts = await Promise.all(
+        loaded.map(async (c) => {
+          const { count, error: countError } = await supabase
+            .from('appointments')
+            .select('id', { count: 'exact', head: true })
+            .eq('client_id', profile.client_id as string)
+            .eq('campaign_id', c.id)
+            .eq('status', 'active')
+          if (countError) {
+            console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
+          }
+          return count ?? 0
+        })
+      )
+      campaigns = loaded.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
     }
   }
 
   const totalSpend = campaigns.reduce((sum, c) => sum + c.meta_spend, 0)
   const totalLeads = campaigns.reduce((sum, c) => sum + c.meta_pixel_leads, 0)
-  const avgCostPerLead = costPerMetaPixelLead(totalSpend, totalLeads)
+  const totalRealAppointments = campaigns.reduce(
+    (sum, c) => sum + realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment),
+    0
+  )
+  const avgRealCostPerAppointment = realCostPerAppointment(totalSpend, totalRealAppointments)
   const isAdmin = profile?.role === 'admin'
 
   return (
@@ -95,12 +120,17 @@ export default async function DashboardPage() {
           {/* KPI globaux : totaux uniquement pour cet incrément, non affectés par le sélecteur Totaux/Par jour. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, margin: '20px 0' }}>
             <KpiCard label="Total dépensé" color={spendColor} value={`${formatEur(totalSpend)} €`} foot="sur la période" />
-            <KpiCard label="Total leads Meta" color={accent} value={String(totalLeads)} foot="conversions pixel" />
             <KpiCard
-              label="Coût moyen / lead"
+              label="Total rendez-vous"
+              color={accent}
+              value={String(totalRealAppointments)}
+              foot={`dont ${totalLeads} lead${totalLeads > 1 ? 's' : ''} Meta (pixel)`}
+            />
+            <KpiCard
+              label="Coût moyen réel / RDV"
               color={ink}
-              value={formatCost(avgCostPerLead)}
-              foot="dépensé ÷ leads Meta (pixel)"
+              value={formatCost(avgRealCostPerAppointment)}
+              foot="dépensé ÷ RDV Calendly"
             />
           </div>
 

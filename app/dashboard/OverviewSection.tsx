@@ -2,7 +2,13 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { campaignDurationDays, costPerMetaPixelLead, metaPixelLeadsPerDay, spendPerDay } from '@/lib/calculations'
+import {
+  appointmentsPerDay,
+  campaignDurationDays,
+  realAppointments,
+  realCostPerAppointment,
+  spendPerDay,
+} from '@/lib/calculations'
 import { accent, faint, formatCost, formatEur, formatPeriod, line, muted, surface, surfaceAlt, radius } from './format'
 import OverviewChart, { type OverviewMode } from './OverviewChart'
 import EndDateEditor from './EndDateEditor'
@@ -14,6 +20,8 @@ type Campaign = {
   end_date: string | null
   meta_spend: number
   meta_pixel_leads: number
+  manual_appointments_adjustment: number
+  calendlyAppointments: number
 }
 
 export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Campaign[]; isAdmin: boolean }) {
@@ -76,15 +84,15 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
         >
           <span>Campagne</span>
           <span>{mode === 'day' ? 'Dépensé / jour' : 'Dépensé'}</span>
-          <span>{mode === 'day' ? 'Leads Meta / jour' : 'Leads Meta'}</span>
-          <span>Coût / lead</span>
+          <span>{mode === 'day' ? 'RDV / jour' : 'RDV Calendly'}</span>
+          <span>Coût réel / RDV</span>
         </div>
         {campaigns.map((campaign, index) => {
           const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
           const durationUnavailable = mode === 'day' && duration === null
+          const realCount = realAppointments(campaign.calendlyAppointments, campaign.manual_appointments_adjustment)
           const spendValue = mode === 'day' ? spendPerDay(campaign.meta_spend, duration) : campaign.meta_spend
-          const leadsValue =
-            mode === 'day' ? metaPixelLeadsPerDay(campaign.meta_pixel_leads, duration) : campaign.meta_pixel_leads
+          const appointmentsValue = mode === 'day' ? appointmentsPerDay(realCount, duration) : realCount
 
           return (
             <div
@@ -124,12 +132,16 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                     {spendValue === null ? '—' : `${formatEur(spendValue)} €`}
                   </div>
                   <div style={{ fontWeight: 500, fontSize: 15 }}>
-                    {leadsValue === null ? '—' : mode === 'day' ? leadsValue.toFixed(2).replace('.', ',') : leadsValue}
+                    {appointmentsValue === null
+                      ? '—'
+                      : mode === 'day'
+                        ? appointmentsValue.toFixed(2).replace('.', ',')
+                        : appointmentsValue}
                   </div>
                 </>
               )}
               <div style={{ fontWeight: 500, fontSize: 15 }}>
-                {formatCost(costPerMetaPixelLead(campaign.meta_spend, campaign.meta_pixel_leads))}
+                {formatCost(realCostPerAppointment(campaign.meta_spend, realCount))}
               </div>
             </div>
           )
