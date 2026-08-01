@@ -240,6 +240,25 @@ code a changé depuis) :
   client/campagne/rendez-vous temporaires et non liés (créés puis supprimés
   pour le test) : aucune trace de ces données dans le rendu du client réel.
   Restauration complète revérifiée après ce test.
+- **Filtre de période global reporté.** Une première version (préréglages
+  Aujourd'hui/7 derniers jours/30 derniers jours/Ce mois/Personnalisé,
+  composant `DashboardDateFilter` partagé via l'URL) a été implémentée puis
+  entièrement retirée : elle comptait une campagne avec la totalité de ses
+  données historiques (dépensé, RDV...) dès que sa fenêtre `start_date`–
+  `end_date` chevauchait la période choisie, faute de granularité
+  journalière — comportement métier incorrect, pas seulement un défaut
+  d'affichage. Le filtre sera réimplémenté une fois une synchro quotidienne
+  Meta/Calendly branchée sur `campaign_daily_stats` (ci-dessous).
+- **Table `campaign_daily_stats` créée en préparation, migration NON
+  appliquée** (`supabase/migrations/20260802000000_campaign_daily_stats.sql`) :
+  statistiques Meta/Calendly par jour et par campagne (`meta_spend`,
+  `meta_pixel_leads`, `calendly_appointments`), contrainte unique
+  `(campaign_id, stat_date)` pour l'idempotence d'une future synchro
+  quotidienne, cohérence client/campagne garantie par la même clé étrangère
+  composite `(campaign_id, client_id) -> campaigns(id, client_id)` que
+  `appointments`, RLS admin CRUD / client lecture seule. Aucune synchro
+  Meta/Calendly ni UI ne l'alimente ou ne la lit encore ; `types/database.ts`
+  mis à jour en anticipation.
 
 ## 6. Tâche immédiate
 

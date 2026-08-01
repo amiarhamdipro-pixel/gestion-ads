@@ -107,6 +107,22 @@ export type Appointment = {
   updated_at: string
 }
 
+// Statistiques Meta/Calendly agrégées par jour et par campagne (préparation du
+// futur filtre de période, voir BRIEF-CLAUDE-CODE.md — table créée par la
+// migration mais pas encore alimentée par une synchro). client_id est
+// toujours cohérent avec la campagne (contrainte base, voir la migration).
+export type CampaignDailyStat = {
+  id: string
+  client_id: string
+  campaign_id: string
+  stat_date: string
+  meta_spend: number
+  meta_pixel_leads: number
+  calendly_appointments: number
+  created_at: string
+  updated_at: string
+}
+
 // Type minimal pour typer les clients Supabase (@supabase/supabase-js, @supabase/ssr).
 // Non généré par la CLI Supabase (CLI non configurée à ce stade) : à tenir à jour manuellement
 // si le schéma évolue.
@@ -193,6 +209,21 @@ export interface Database {
         > &
           Omit<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel'>
         Update: Partial<Appointment>
+        Relationships: []
+      }
+      campaign_daily_stats: {
+        Row: CampaignDailyStat
+        Insert: Partial<
+          Pick<
+            CampaignDailyStat,
+            'id' | 'created_at' | 'updated_at' | 'meta_spend' | 'meta_pixel_leads' | 'calendly_appointments'
+          >
+        > &
+          Omit<
+            CampaignDailyStat,
+            'id' | 'created_at' | 'updated_at' | 'meta_spend' | 'meta_pixel_leads' | 'calendly_appointments'
+          >
+        Update: Partial<CampaignDailyStat>
         Relationships: []
       }
     }
