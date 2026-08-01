@@ -37,6 +37,36 @@ function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
 }
 
+type ChannelBreakdown = { channel: string; count: number; ratio: number }
+
+// Regroupement insensible à la casse et aux espaces superflus (ex.
+// "Instagram" / " instagram " comptent comme un seul canal), sans jamais
+// fusionner des canaux réellement différents (ex. "Google" et "Google Ads"
+// restent distincts) : la clé de regroupement est normalisée, mais
+// l'étiquette affichée reste la première valeur réelle rencontrée pour ce
+// canal, telle quelle (aucune donnée inventée). null/vide -> "Non renseigné".
+function groupByAcquisitionChannel(rawChannels: (string | null)[]): ChannelBreakdown[] {
+  const total = rawChannels.length
+  if (total === 0) return []
+
+  const groups = new Map<string, { label: string; count: number }>()
+  for (const raw of rawChannels) {
+    const trimmed = (raw ?? '').trim()
+    const label = trimmed === '' ? 'Non renseigné' : trimmed
+    const key = label.toLowerCase()
+    const existing = groups.get(key)
+    if (existing) {
+      existing.count += 1
+    } else {
+      groups.set(key, { label, count: 1 })
+    }
+  }
+
+  return Array.from(groups.values())
+    .map(({ label, count }) => ({ channel: label, count, ratio: count / total }))
+    .sort((a, b) => b.count - a.count)
+}
+
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
@@ -70,24 +100,24 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     notFound()
   }
 
-  // RDV réels rattachés à cette campagne : comptés directement dans
-  // appointments (status='active'), pas depuis campaigns.calendly_appointments
-  // qui reste à 0 par défaut (jamais écrit par la synchro).
-  const { count: calendlyAppointmentsCount, error: appointmentsCountError } = await supabase
+  // RDV réels rattachés à cette campagne : lus directement dans appointments
+  // (status='active'), pas depuis campaigns.calendly_appointments qui reste
+  // à 0 par défaut (jamais écrit par la synchro). Une seule requête sert à
+  // la fois le total (KPI) et la répartition par canal ci-dessous.
+  const { data: activeAppointmentRows, error: appointmentsError } = await supabase
     .from('appointments')
-    .select('id', { count: 'exact', head: true })
+    .select('acquisition_channel')
     .eq('client_id', profile.client_id)
     .eq('campaign_id', campaign.id)
     .eq('status', 'active')
 
-  if (appointmentsCountError) {
-    console.error(`Échec comptage rendez-vous campagne ${campaign.id} : ${appointmentsCountError.message}`)
+  if (appointmentsError) {
+    console.error(`Échec lecture rendez-vous campagne ${campaign.id} : ${appointmentsError.message}`)
   }
 
-  const realAppointmentsCount = realAppointments(
-    calendlyAppointmentsCount ?? 0,
-    campaign.manual_appointments_adjustment
-  )
+  const activeAppointments = activeAppointmentRows ?? []
+  const channelBreakdown = groupByAcquisitionChannel(activeAppointments.map((a) => a.acquisition_channel))
+  const realAppointmentsCount = realAppointments(activeAppointments.length, campaign.manual_appointments_adjustment)
   const realCostPerAppt = realCostPerAppointment(campaign.meta_spend, realAppointmentsCount)
   const trackingGapValue = trackingGap(realAppointmentsCount, campaign.meta_pixel_leads)
 
@@ -191,6 +221,53 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           />
         ) : null}
       </div>
+
+      <div style={{ marginTop: 30, marginBottom: 14 }}>
+        <h2 style={{ fontWeight: 600, fontSize: 17 }}>Rendez-vous par canal d&apos;acquisition</h2>
+      </div>
+
+      {channelBreakdown.length === 0 ? (
+        <p style={{ color: muted }}>Aucun rendez-vous confirmé pour cette campagne.</p>
+      ) : (
+        <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1.4fr 1fr 1fr',
+              gap: 14,
+              padding: '10px 18px',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '.05em',
+              textTransform: 'uppercase',
+              color: faint,
+              background: surfaceAlt,
+              borderBottom: `1px solid ${line}`,
+            }}
+          >
+            <span>Canal</span>
+            <span>Rendez-vous</span>
+            <span>Part</span>
+          </div>
+          {channelBreakdown.map((row, index) => (
+            <div
+              key={row.channel}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.4fr 1fr 1fr',
+                gap: 14,
+                alignItems: 'center',
+                padding: '12px 18px',
+                borderTop: index === 0 ? 'none' : `1px solid ${line}`,
+              }}
+            >
+              <span style={{ fontWeight: 500, fontSize: 14 }}>{row.channel}</span>
+              <span style={{ fontWeight: 500, fontSize: 14 }}>{row.count}</span>
+              <span style={{ fontWeight: 500, fontSize: 14 }}>{formatPct(row.ratio)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ marginTop: 30, marginBottom: 14 }}>
         <h2 style={{ fontWeight: 600, fontSize: 17 }}>Barbier vs Coiffeur</h2>

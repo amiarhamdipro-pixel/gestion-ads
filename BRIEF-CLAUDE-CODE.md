@@ -198,6 +198,48 @@ code a changé depuis) :
   tracking affiché pour l'admin et confirmé **absent** du HTML pour le
   client, puis restauration complète (`end_date` et `campaign_id` revenus à
   l'état initial, vérifié indépendamment en base).
+- **Répartition des RDV par canal d'acquisition** dans le détail campagne
+  (`app/dashboard/campaigns/[id]/page.tsx`, `groupByAcquisitionChannel` —
+  fonction locale au fichier, pas ajoutée à `lib/calculations.ts`, non
+  listée dans le périmètre de cette tâche). Regroupe les rendez-vous
+  `status='active'` de la campagne par `acquisition_channel`, normalisé pour
+  le seul regroupement (`trim()` + comparaison insensible à la casse),
+  jamais pour l'affichage : l'étiquette montrée reste la première valeur
+  réelle rencontrée pour ce canal, telle quelle (ex. « Tiktok » observé tel
+  quel côté Calendly, pas reformaté en « TikTok »). `null`/vide -> « Non
+  renseigné ». Trié par nombre décroissant ; pourcentage via `formatPct`
+  déjà existante. Section visible admin **et** client (pas de `isAdmin`,
+  contrairement à l'écart de tracking). État vide propre si aucun rendez-vous.
+  Une seule requête Supabase sert à la fois le total RDV (KPI) et la
+  répartition (avant : requête `count`-only séparée, supprimée). Validé en
+  conditions réelles (même fenêtre témoin, campagne n°19) contre une
+  référence de regroupement indépendante calculée directement en base :
+  Google 17 (34,7 %), Facebook 15 (30,6 %), Instagram 12 (24,5 %), Tiktok 4
+  (8,2 %), MCB 1 (2,0 %) — somme des canaux = 49 = total RDV Calendly de la
+  campagne. Rendu HTML confirmé strictement identique (comparaison directe
+  de la sortie serveur, pas juste masqué en CSS) entre session admin et
+  session client. Restauration complète revérifiée après ce test.
+- **Vue Comparaison branchée sur les RDV Calendly réels**
+  (`app/dashboard/comparison/page.tsx`). RDV comptés par campagne comme
+  ailleurs dans le dashboard (`appointments`, `status='active'`,
+  `campaign_id` rattaché + `client_id` revérifié — jamais
+  `campaigns.calendly_appointments`). Tableau : RDV Calendly, RDV/jour
+  (`appointmentsPerDay`, si durée disponible), dépensé, coût réel/RDV ;
+  leads Meta gardés en dernière colonne, information secondaire (couleur
+  atténuée). Mise en avant (« top ») sur le meilleur RDV/jour (max) et le
+  meilleur coût réel/RDV (min) uniquement — jamais sur des totaux bruts non
+  comparables, même principe que l'existant. `lib/calculations.ts` inchangé
+  (mêmes fonctions déjà existantes que le reste du dashboard). Classement
+  vidéo (`VideoRanking.tsx`) **non modifié** : toujours coût/lead pixel Meta
+  + taux d'accroche, aucune ventilation RDV. Validé en conditions réelles
+  (fenêtre témoin campagne n°19, 49 RDV réels) : ligne campagne 19 exacte
+  (18 j, 49 RDV, 2,72 RDV/j, 500 €, 10,20 €, badges « top » sur RDV/j et
+  coût réel/RDV — seule campagne avec des RDV réels), campagne 20 (aucune
+  fenêtre) affiche `—`/0 sans classement ni badge erroné, classement vidéo
+  confirmé inchangé. **Isolation multi-client vérifiée** avec un second
+  client/campagne/rendez-vous temporaires et non liés (créés puis supprimés
+  pour le test) : aucune trace de ces données dans le rendu du client réel.
+  Restauration complète revérifiée après ce test.
 
 ## 6. Tâche immédiate
 

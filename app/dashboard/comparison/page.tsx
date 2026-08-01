@@ -2,10 +2,12 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import {
+  appointmentsPerDay,
   campaignDurationDays,
   costPerMetaPixelLead,
   hookRatePlay,
-  metaPixelLeadsPerDay,
+  realAppointments,
+  realCostPerAppointment,
 } from '@/lib/calculations'
 import { accent, faint, formatCost, formatEur, ink, line, muted, surfaceAlt } from '../format'
 import VideoRanking, { type RankedVideo } from './VideoRanking'
@@ -17,6 +19,8 @@ type CampaignRow = {
   end_date: string | null
   meta_spend: number
   meta_pixel_leads: number
+  manual_appointments_adjustment: number
+  calendlyAppointments: number
 }
 
 type AudienceRow = {
@@ -39,7 +43,7 @@ function formatDuration(days: number | null): string {
   return days === null ? '—' : `${days} j`
 }
 
-function formatLeadsPerDay(n: number | null): string {
+function formatPerDay(n: number | null): string {
   return n === null ? '—' : n.toFixed(2).replace('.', ',')
 }
 
@@ -64,14 +68,34 @@ export default async function ComparisonPage() {
   if (profile?.client_id) {
     const { data: campaignData, error: campaignError } = await supabase
       .from('campaigns')
-      .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads')
+      .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
     if (campaignError) {
       loadError = campaignError.message
     } else {
-      campaigns = campaignData ?? []
+      const loadedCampaigns = campaignData ?? []
+      // RDV réels par campagne : comptés directement dans appointments
+      // (status='active', campaign_id rattaché, client_id revérifié), pas
+      // depuis campaigns.calendly_appointments qui reste à 0 par défaut
+      // (jamais écrit par la synchro). Même principe que la vue d'ensemble
+      // (app/dashboard/page.tsx).
+      const counts = await Promise.all(
+        loadedCampaigns.map(async (c) => {
+          const { count, error: countError } = await supabase
+            .from('appointments')
+            .select('id', { count: 'exact', head: true })
+            .eq('client_id', profile.client_id as string)
+            .eq('campaign_id', c.id)
+            .eq('status', 'active')
+          if (countError) {
+            console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
+          }
+          return count ?? 0
+        })
+      )
+      campaigns = loadedCampaigns.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
 
       if (campaigns.length > 0) {
         const { data: audienceData, error: audienceError } = await supabase
@@ -107,29 +131,32 @@ export default async function ComparisonPage() {
     }
   }
 
-  // Comparatif campagnes : durée, leads Meta, leads/jour, dépensé, coût/lead.
+  // Comparatif campagnes : durée, RDV Calendly réels, RDV/jour, dépensé,
+  // coût réel/RDV (leads Meta gardés en information secondaire).
   const comparisonRows = campaigns.map((campaign) => {
     const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
+    const realCount = realAppointments(campaign.calendlyAppointments, campaign.manual_appointments_adjustment)
     return {
       campaign,
       duration,
-      leadsPerDay: metaPixelLeadsPerDay(campaign.meta_pixel_leads, duration),
-      costPerLead: costPerMetaPixelLead(campaign.meta_spend, campaign.meta_pixel_leads),
+      realCount,
+      appointmentsPerDayValue: appointmentsPerDay(realCount, duration),
+      realCostPerAppt: realCostPerAppointment(campaign.meta_spend, realCount),
     }
   })
 
   // Mis en avant uniquement sur les métriques de performance comparables entre
   // campagnes (taux, coût) — pas sur les totaux bruts (dépensé, leads Meta),
   // qui ne sont pas comparables sans normalisation. Même principe que la
-  // maquette (RDV/jour et coût/RDV uniquement surlignés).
-  const bestLeadsPerDay = Math.max(
-    ...comparisonRows.map((r) => r.leadsPerDay).filter((v): v is number => v !== null)
+  // maquette (RDV/jour et coût réel/RDV uniquement surlignés).
+  const bestAppointmentsPerDay = Math.max(
+    ...comparisonRows.map((r) => r.appointmentsPerDayValue).filter((v): v is number => v !== null)
   )
-  const bestCostPerLead = Math.min(
-    ...comparisonRows.map((r) => r.costPerLead).filter((v): v is number => v !== null)
+  const bestRealCostPerAppointment = Math.min(
+    ...comparisonRows.map((r) => r.realCostPerAppt).filter((v): v is number => v !== null)
   )
-  const hasBestLeadsPerDay = Number.isFinite(bestLeadsPerDay)
-  const hasBestCostPerLead = Number.isFinite(bestCostPerLead)
+  const hasBestAppointmentsPerDay = Number.isFinite(bestAppointmentsPerDay)
+  const hasBestRealCostPerAppointment = Number.isFinite(bestRealCostPerAppointment)
 
   // Classement vidéos : agrège par meta_ad_id (une vidéo réelle peut revenir
   // sur plusieurs campagnes) ; sinon une ligne par vidéo. Coût/lead et
@@ -215,7 +242,7 @@ export default async function ComparisonPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
               <thead>
                 <tr>
-                  {['Campagne', 'Durée', 'Leads Meta', 'Leads / j', 'Dépensé', 'Coût / lead'].map((label) => (
+                  {['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta'].map((label) => (
                     <th
                       key={label}
                       style={{
@@ -236,8 +263,10 @@ export default async function ComparisonPage() {
               </thead>
               <tbody>
                 {comparisonRows.map((row) => {
-                  const isBestLeadsPerDay = hasBestLeadsPerDay && row.leadsPerDay === bestLeadsPerDay
-                  const isBestCostPerLead = hasBestCostPerLead && row.costPerLead === bestCostPerLead
+                  const isBestAppointmentsPerDay =
+                    hasBestAppointmentsPerDay && row.appointmentsPerDayValue === bestAppointmentsPerDay
+                  const isBestRealCostPerAppointment =
+                    hasBestRealCostPerAppointment && row.realCostPerAppt === bestRealCostPerAppointment
                   return (
                     <tr key={row.campaign.id}>
                       <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, fontWeight: 600 }}>
@@ -249,18 +278,25 @@ export default async function ComparisonPage() {
                         {formatDuration(row.duration)}
                       </td>
                       <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {row.campaign.meta_pixel_leads}
+                        {row.realCount}
                       </td>
                       <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {formatLeadsPerDay(row.leadsPerDay)}
-                        {isBestLeadsPerDay ? <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span> : null}
+                        {formatPerDay(row.appointmentsPerDayValue)}
+                        {isBestAppointmentsPerDay ? (
+                          <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span>
+                        ) : null}
                       </td>
                       <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
                         {formatEur(row.campaign.meta_spend)} €
                       </td>
                       <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {formatCost(row.costPerLead)}
-                        {isBestCostPerLead ? <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span> : null}
+                        {formatCost(row.realCostPerAppt)}
+                        {isBestRealCostPerAppointment ? (
+                          <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span>
+                        ) : null}
+                      </td>
+                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right', color: faint }}>
+                        {row.campaign.meta_pixel_leads}
                       </td>
                     </tr>
                   )
