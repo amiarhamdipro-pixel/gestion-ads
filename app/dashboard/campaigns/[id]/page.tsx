@@ -13,7 +13,6 @@ import {
 } from '@/lib/calculations'
 import KpiCard from '../../KpiCard'
 import {
-  accent,
   amber,
   faint,
   formatCost,
@@ -33,11 +32,6 @@ import {
   violet,
 } from '../../format'
 import { CalendarIcon, ClockIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
-
-// Couleurs d'audience reprises de dashboard-maquette_1.html (badges barber/coiffeur).
-const teal = '#0E9AA7'
-const tealSoft = '#DDF3F5'
-const accentSoft = '#ECE9FB'
 
 function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
@@ -149,7 +143,14 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const costPerLead = costPerMetaPixelLead(campaign.meta_spend, campaign.meta_pixel_leads)
 
   return (
-    <main style={{ padding: '32px 32px 56px', color: ink }}>
+    <main style={{ padding: '40px 40px 64px', color: ink }}>
+      <style>{`
+        .amerys-audience-grid { grid-template-columns: 1fr 1fr; }
+        @media (max-width: 640px) {
+          .amerys-audience-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
         <Link
           href="/dashboard"
@@ -173,15 +174,15 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           >
             Détail campagne
           </div>
-          <h1 style={{ fontWeight: 600, fontSize: 23 }}>Campagne {campaign.campaign_number}</h1>
+          <h1 style={{ fontWeight: 700, fontSize: 24, letterSpacing: '-.01em' }}>Campagne {campaign.campaign_number}</h1>
         </div>
         {campaign.status ? (
           <span
             style={{
               marginLeft: 'auto',
-              fontSize: 11.5,
-              fontWeight: 600,
-              padding: '4px 10px',
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '3px 10px',
               borderRadius: 999,
               background: surfaceAlt,
               color: muted,
@@ -191,12 +192,12 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </span>
         ) : null}
       </div>
-      <p style={{ color: muted, fontSize: 13.5, marginTop: 3 }}>
+      <p style={{ color: muted, fontSize: 13.5, marginTop: 4 }}>
         {formatPeriod(campaign.start_date, campaign.end_date)}
         {duration !== null ? ` · ${duration} jour${duration > 1 ? 's' : ''}` : ''}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, margin: '20px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18, margin: '30px 0' }}>
         <KpiCard
           icon={<DollarIcon size={20} />}
           iconColor={indigo}
@@ -256,8 +257,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         ) : null}
       </div>
 
-      <div style={{ marginTop: 30, marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 17 }}>Rendez-vous par canal d&apos;acquisition</h2>
+      <div style={{ marginTop: 32, marginBottom: 16 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Rendez-vous par canal d&apos;acquisition</h2>
       </div>
 
       {channelBreakdown.length === 0 ? (
@@ -269,10 +270,10 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               display: 'grid',
               gridTemplateColumns: '1.4fr 1fr 1fr',
               gap: 14,
-              padding: '10px 18px',
+              padding: '13px 16px',
               fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '.05em',
+              fontWeight: 700,
+              letterSpacing: '.04em',
               textTransform: 'uppercase',
               color: faint,
               background: surfaceAlt,
@@ -291,7 +292,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                 gridTemplateColumns: '1.4fr 1fr 1fr',
                 gap: 14,
                 alignItems: 'center',
-                padding: '12px 18px',
+                padding: '14px 16px',
                 borderTop: index === 0 ? 'none' : `1px solid ${line}`,
               }}
             >
@@ -303,20 +304,20 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </div>
       )}
 
-      <div style={{ marginTop: 30, marginBottom: 14 }}>
-        <h2 style={{ fontWeight: 600, fontSize: 17 }}>Barbier vs Coiffeur</h2>
+      <div style={{ marginTop: 32, marginBottom: 16 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Barbier vs Coiffeur</h2>
       </div>
 
       {(audiences ?? []).length === 0 ? (
         <p style={{ color: muted }}>Aucune audience disponible pour cette campagne.</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div className="amerys-audience-grid" style={{ display: 'grid', gap: 18 }}>
           {(audiences ?? []).map((audience) => {
             const video = (videos ?? []).find((v) => v.audience_id === audience.id) ?? null
             const audienceCostPerLead = costPerMetaPixelLead(audience.meta_spend, audience.meta_pixel_leads)
             const isBarbier = audience.audience_type === 'barbier'
-            const badgeColor = isBarbier ? accent : teal
-            const badgeSoft = isBarbier ? accentSoft : tealSoft
+            const badgeColor = isBarbier ? indigo : violet
+            const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
 
             const hookPlay = video ? hookRatePlay(video.video_plays, video.impressions) : null
             const hookThru = video ? hookRateThruplay(video.thruplays, video.impressions) : null
@@ -366,33 +367,33 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
                 {video ? (
                   <>
-                    <div style={{ fontSize: 12.5, color: muted, marginTop: 12 }}>{video.name}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 500, color: muted, marginTop: 12 }}>{video.name}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 15 }}>{video.impressions.toLocaleString('fr-FR')}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>Impressions</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.impressions.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Impressions</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 15 }}>{video.video_plays.toLocaleString('fr-FR')}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>Plays</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.video_plays.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Plays</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 15 }}>{video.thruplays.toLocaleString('fr-FR')}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>ThruPlays</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.thruplays.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>ThruPlays</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 13 }}>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '8px 4px', background: surfaceAlt }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{formatPct(hookPlay)}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>Accroche (play)</div>
+                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hookPlay)}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche (play)</div>
                       </div>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '8px 4px', background: surfaceAlt }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{formatPct(hookThru)}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>Accroche (thruplay)</div>
+                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hookThru)}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche (thruplay)</div>
                       </div>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '8px 4px', background: surfaceAlt }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{formatPct(retention)}</div>
-                        <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>Rétention</div>
+                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(retention)}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Rétention</div>
                       </div>
                     </div>
                   </>

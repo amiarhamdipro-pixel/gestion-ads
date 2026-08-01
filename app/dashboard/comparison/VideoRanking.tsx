@@ -1,9 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { accent, faint, ink, line, muted, surface } from '../format'
-
-const teal = '#0E9AA7'
+import { accent, faint, ink, line, muted, radius, surface, surfaceAlt, violet } from '../format'
 
 export type RankedVideo = {
   metaAdId: string
@@ -39,30 +37,38 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 3, background: '#F6F7FB', border: `1px solid ${line}`, borderRadius: 999, padding: 3, width: 'fit-content', marginBottom: 16 }}>
-        {(
-          [
-            { key: 'cpl', label: 'Meilleur coût par lead' },
-            { key: 'hook', label: "Meilleur taux d'accroche" },
-          ] as const
-        ).map((opt) => (
-          <button
-            key={opt.key}
-            type="button"
-            onClick={() => setCriterion(opt.key)}
-            style={{
-              border: 0,
-              borderRadius: 999,
-              padding: '6px 13px',
-              fontSize: 12.5,
-              cursor: 'pointer',
-              background: criterion === opt.key ? surface : 'transparent',
-              fontWeight: criterion === opt.key ? 600 : 400,
-            }}
-          >
-            {opt.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontWeight: 700, fontSize: 17, margin: 0 }}>Classement des vidéos</h2>
+          <p style={{ color: faint, fontSize: 12.5, margin: '2px 0 0' }}>
+            {videos.length} vidéo{videos.length > 1 ? 's' : ''} — une vidéo peut revenir sur plusieurs campagnes
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, background: surfaceAlt, border: `1px solid ${line}`, borderRadius: 999, padding: 3 }}>
+          {(
+            [
+              { key: 'cpl', label: 'Meilleur coût par lead' },
+              { key: 'hook', label: "Meilleur taux d'accroche" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setCriterion(opt.key)}
+              style={{
+                border: 0,
+                borderRadius: 999,
+                padding: '5px 12px',
+                fontSize: 12,
+                cursor: 'pointer',
+                background: criterion === opt.key ? surface : 'transparent',
+                fontWeight: criterion === opt.key ? 600 : 400,
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {videos.length === 0 ? (
@@ -79,15 +85,15 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                 alignItems: 'center',
                 background: surface,
                 border: `1px solid ${line}`,
-                borderRadius: 14,
-                padding: '12px 16px',
+                borderRadius: radius,
+                padding: '13px 16px',
               }}
             >
               <div style={{ fontWeight: 700, fontSize: 17, color: i === 0 ? accent : faint, textAlign: 'center' }}>
                 {i + 1}
               </div>
               <div>
-                <b style={{ fontSize: 14, display: 'block', color: v.audienceType === 'barbier' ? accent : teal }}>
+                <b style={{ fontSize: 14, display: 'block', color: v.audienceType === 'barbier' ? accent : violet }}>
                   {v.name}
                 </b>
                 <span style={{ fontSize: 12, color: muted }}>
@@ -119,10 +125,10 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                     gridTemplateColumns: '26px 1fr auto',
                     gap: 14,
                     alignItems: 'center',
-                    background: '#F6F7FB',
+                    background: surfaceAlt,
                     border: `1px dashed ${line}`,
-                    borderRadius: 14,
-                    padding: '12px 16px',
+                    borderRadius: radius,
+                    padding: '13px 16px',
                     marginBottom: 8,
                   }}
                 >

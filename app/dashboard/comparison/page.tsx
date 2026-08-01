@@ -9,7 +9,7 @@ import {
   realAppointments,
   realCostPerAppointment,
 } from '@/lib/calculations'
-import { accent, faint, formatCost, formatEur, ink, line, muted, surfaceAlt } from '../format'
+import { accent, faint, formatCost, formatEur, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import VideoRanking, { type RankedVideo } from './VideoRanking'
 
 type CampaignRow = {
@@ -45,6 +45,30 @@ function formatDuration(days: number | null): string {
 
 function formatPerDay(n: number | null): string {
   return n === null ? '—' : n.toFixed(2).replace('.', ',')
+}
+
+// Badge "top" sobre : petite étiquette discrète (pas un texte vert criard),
+// même logique de mise en avant qu'avant (colonnes RDV/j et coût réel/RDV
+// uniquement), juste un traitement visuel plus premium/cohérent avec le
+// reste de l'interface.
+function TopBadge() {
+  return (
+    <span
+      style={{
+        marginLeft: 6,
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '.03em',
+        textTransform: 'uppercase',
+        color: green,
+        background: softBg(green, 0.14),
+        borderRadius: 999,
+        padding: '2px 7px',
+      }}
+    >
+      Top
+    </span>
+  )
 }
 
 export default async function ComparisonPage() {
@@ -216,9 +240,9 @@ export default async function ComparisonPage() {
   }))
 
   return (
-    <main style={{ padding: '32px 32px 56px', color: ink }}>
-      <h1 style={{ fontWeight: 700, fontSize: 25, letterSpacing: '-.01em' }}>Comparaison</h1>
-      <p style={{ color: muted, fontSize: 13.5, marginTop: 4 }}>Toutes les campagnes ramenées à armes égales</p>
+    <main style={{ padding: '40px 40px 64px', color: ink }}>
+      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
+      <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Toutes les campagnes ramenées à armes égales</p>
 
       {!profile?.client_id ? (
         <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>
@@ -228,89 +252,148 @@ export default async function ComparisonPage() {
         <p style={{ marginTop: 20, color: muted }}>Aucune campagne synchronisée pour le moment.</p>
       ) : (
         <>
-          <div style={{ marginTop: 24, marginBottom: 14 }}>
-            <h2 style={{ fontWeight: 600, fontSize: 17 }}>Campagnes côte à côte</h2>
+          <style>{`
+            .amerys-card-list { display: none; }
+            @media (max-width: 640px) {
+              .amerys-table-wrap { display: none; }
+              .amerys-card-list { display: flex; }
+            }
+          `}</style>
+
+          <div style={{ marginTop: 30, marginBottom: 16 }}>
+            <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
             <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
               La meilleure valeur de chaque colonne comparable est mise en avant
             </p>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-              <thead>
-                <tr>
-                  {['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta'].map((label) => (
-                    <th
-                      key={label}
-                      style={{
-                        textAlign: label === 'Campagne' ? 'left' : 'right',
-                        padding: '13px 14px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        letterSpacing: '.04em',
-                        textTransform: 'uppercase',
-                        color: faint,
-                        background: surfaceAlt,
-                      }}
-                    >
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonRows.map((row) => {
-                  const isBestAppointmentsPerDay =
-                    hasBestAppointmentsPerDay && row.appointmentsPerDayValue === bestAppointmentsPerDay
-                  const isBestRealCostPerAppointment =
-                    hasBestRealCostPerAppointment && row.realCostPerAppt === bestRealCostPerAppointment
-                  return (
-                    <tr key={row.campaign.id}>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, fontWeight: 600 }}>
-                        <Link href={`/dashboard/campaigns/${row.campaign.id}`} style={{ color: accent, textDecoration: 'none' }}>
-                          Campagne {row.campaign.campaign_number}
-                        </Link>
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {formatDuration(row.duration)}
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {row.realCount}
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
+          {/* Desktop/tablette : tableau complet, scroll horizontal en filet de
+              sécurité si l'espace est serré. */}
+          <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                <thead>
+                  <tr>
+                    {['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta'].map((label) => (
+                      <th
+                        key={label}
+                        style={{
+                          textAlign: label === 'Campagne' ? 'left' : 'right',
+                          padding: '13px 16px',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: '.04em',
+                          textTransform: 'uppercase',
+                          color: faint,
+                          background: surfaceAlt,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparisonRows.map((row, index) => {
+                    const isBestAppointmentsPerDay =
+                      hasBestAppointmentsPerDay && row.appointmentsPerDayValue === bestAppointmentsPerDay
+                    const isBestRealCostPerAppointment =
+                      hasBestRealCostPerAppointment && row.realCostPerAppt === bestRealCostPerAppointment
+                    return (
+                      <tr key={row.campaign.id} style={{ borderTop: index === 0 ? 'none' : `1px solid ${line}` }}>
+                        <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 600 }}>
+                          <Link href={`/dashboard/campaigns/${row.campaign.id}`} style={{ color: accent, textDecoration: 'none' }}>
+                            Campagne {row.campaign.campaign_number}
+                          </Link>
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right' }}>{formatDuration(row.duration)}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right' }}>{row.realCount}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {formatPerDay(row.appointmentsPerDayValue)}
+                          {isBestAppointmentsPerDay ? <TopBadge /> : null}
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {formatEur(row.campaign.meta_spend)} €
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {formatCost(row.realCostPerAppt)}
+                          {isBestRealCostPerAppointment ? <TopBadge /> : null}
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: faint }}>
+                          {row.campaign.meta_pixel_leads}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile (<=640px) : une carte par campagne, aucune coupure horizontale. */}
+          <div className="amerys-card-list" style={{ flexDirection: 'column', gap: 12 }}>
+            {comparisonRows.map((row) => {
+              const isBestAppointmentsPerDay =
+                hasBestAppointmentsPerDay && row.appointmentsPerDayValue === bestAppointmentsPerDay
+              const isBestRealCostPerAppointment =
+                hasBestRealCostPerAppointment && row.realCostPerAppt === bestRealCostPerAppointment
+              return (
+                <div key={row.campaign.id} style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}>
+                  <Link href={`/dashboard/campaigns/${row.campaign.id}`} style={{ fontWeight: 600, fontSize: 15, color: accent, textDecoration: 'none' }}>
+                    Campagne {row.campaign.campaign_number}
+                  </Link>
+                  <div style={{ fontSize: 12.5, color: muted, marginTop: 3 }}>
+                    {formatDuration(row.duration)} · {row.realCount} RDV Calendly
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                        RDV / j
+                      </div>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
                         {formatPerDay(row.appointmentsPerDayValue)}
-                        {isBestAppointmentsPerDay ? (
-                          <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span>
-                        ) : null}
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
-                        {formatEur(row.campaign.meta_spend)} €
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right' }}>
+                        {isBestAppointmentsPerDay ? <TopBadge /> : null}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                        Dépensé
+                      </div>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatEur(row.campaign.meta_spend)} €</div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 14,
+                      paddingTop: 14,
+                      borderTop: `1px solid ${line}`,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                        Coût / RDV réel
+                      </div>
+                      <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
                         {formatCost(row.realCostPerAppt)}
-                        {isBestRealCostPerAppointment ? (
-                          <span style={{ color: '#12A150', fontSize: 11, fontWeight: 600, marginLeft: 6 }}>top</span>
-                        ) : null}
-                      </td>
-                      <td style={{ padding: '13px 14px', fontSize: 13, borderTop: `1px solid ${line}`, textAlign: 'right', color: faint }}>
-                        {row.campaign.meta_pixel_leads}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        {isBestRealCostPerAppointment ? <TopBadge /> : null}
+                      </div>
+                    </div>
+                    <span style={{ color: faint, fontSize: 12.5 }}>{row.campaign.meta_pixel_leads} leads Meta</span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
-          <div style={{ marginTop: 30, marginBottom: 14 }}>
-            <h2 style={{ fontWeight: 600, fontSize: 17 }}>Classement des vidéos</h2>
-            <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
-              {rankedVideos.length} vidéo{rankedVideos.length > 1 ? 's' : ''} — une vidéo peut revenir sur plusieurs
-              campagnes
-            </p>
+          <div style={{ marginTop: 32 }}>
+            <VideoRanking videos={rankedVideos} />
           </div>
-
-          <VideoRanking videos={rankedVideos} />
         </>
       )}
     </main>
