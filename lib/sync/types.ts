@@ -24,6 +24,15 @@ export type MetaAdSetInsights = {
   actions?: MetaAction[]
 }
 
+// Une ligne par jour (fields=date_start,date_stop,spend,actions,
+// time_increment=1). date_start === date_stop pour un incrément d'un jour.
+export type MetaAdSetDailyInsight = {
+  date_start: string
+  date_stop: string
+  spend: string
+  actions?: MetaAction[]
+}
+
 export type MetaAd = {
   id: string
   name: string
@@ -84,4 +93,30 @@ export type SyncAllCampaignsReport = {
   failed: number
   invalid: InvalidCampaignGroup[]
   details: CampaignSyncOutcome[]
+}
+
+// ─── Synchro quotidienne (campaign_daily_stats) ─────────────────────────────
+// Réutilise SyncCampaignParams (même params : clientId, metaCampaignId,
+// campaignNumber, leadActionType) — aucun type dupliqué.
+
+export type SyncCampaignDailyStatsResult = {
+  campaignNumber: number
+  campaignId: string
+  daysUpserted: number
+  dates: string[]
+}
+
+export type CampaignDailyStatsSyncOutcome =
+  | { campaignNumber: number; status: 'success'; result: SyncCampaignDailyStatsResult }
+  | { campaignNumber: number; status: 'failed'; message: string }
+
+export type SyncAllCampaignsDailyStatsReport = {
+  totalDetected: number
+  succeeded: number
+  failed: number
+  // true si l'arrêt anticipé a été déclenché par un code d'erreur Meta 17
+  // (limite de débit) : les campagnes non tentées ne sont pas des échecs.
+  stoppedOnRateLimit: boolean
+  invalid: InvalidCampaignGroup[]
+  details: CampaignDailyStatsSyncOutcome[]
 }

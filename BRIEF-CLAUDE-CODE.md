@@ -249,16 +249,37 @@ code a changé depuis) :
   journalière — comportement métier incorrect, pas seulement un défaut
   d'affichage. Le filtre sera réimplémenté une fois une synchro quotidienne
   Meta/Calendly branchée sur `campaign_daily_stats` (ci-dessous).
-- **Table `campaign_daily_stats` créée en préparation, migration NON
-  appliquée** (`supabase/migrations/20260802000000_campaign_daily_stats.sql`) :
+- **Table `campaign_daily_stats` créée puis appliquée**
+  (`supabase/migrations/20260802000000_campaign_daily_stats.sql`) :
   statistiques Meta/Calendly par jour et par campagne (`meta_spend`,
   `meta_pixel_leads`, `calendly_appointments`), contrainte unique
-  `(campaign_id, stat_date)` pour l'idempotence d'une future synchro
-  quotidienne, cohérence client/campagne garantie par la même clé étrangère
-  composite `(campaign_id, client_id) -> campaigns(id, client_id)` que
-  `appointments`, RLS admin CRUD / client lecture seule. Aucune synchro
-  Meta/Calendly ni UI ne l'alimente ou ne la lit encore ; `types/database.ts`
-  mis à jour en anticipation.
+  `(campaign_id, stat_date)` pour l'idempotence de la synchro quotidienne,
+  cohérence client/campagne garantie par la même clé étrangère composite
+  `(campaign_id, client_id) -> campaigns(id, client_id)` que `appointments`,
+  RLS admin CRUD / client lecture seule. `types/database.ts` mis à jour.
+- **Synchro Meta quotidienne codée et testée en conditions réelles**
+  (`lib/sync/meta.ts` : `fetchAdSetDailyInsights`, `time_increment=1` ;
+  `lib/sync/mapper.ts` : `aggregateDailyInsights`, agrège barbier+coiffeur par
+  date, aucun jour synthétique — seules les dates réellement retournées par
+  Meta sont upsertées ; `lib/sync/syncCampaignDailyStats.ts` : une campagne,
+  cherche la ligne `campaigns` déjà existante par `client_id`+
+  `campaign_number` (ne la recrée jamais) ; `lib/sync/syncAllCampaignsDailyStats.ts` :
+  boucle strictement séquentielle sur les campagnes valides détectées, arrêt
+  immédiat si Meta renvoie le code 17 — limite de débit — traité comme un
+  arrêt normal, pas une erreur). `meta_spend`/`meta_pixel_leads` sont les
+  seuls champs écrits ; `calendly_appointments` toujours omis du payload
+  d'upsert, donc jamais écrasé (vérifié avec une valeur sentinelle posée
+  manuellement, qui survit à un rejeu). Validé en conditions réelles
+  (`scripts/test-sync-campaign-daily-stats.ts`) : campagne témoin n°20 — 8
+  jours upsertés, somme journalière du dépensé et des leads strictement
+  égale au total campagne (298,03 € / 9 leads des deux côtés), second run
+  sans doublon (mêmes ids). Puis les 9 campagnes valides (12 à 20) : premier
+  passage 9/9 réussies (125 lignes au total) ; second passage a réellement
+  atteint la limite de débit Meta (code 17) après 7 campagnes et s'est arrêté
+  immédiatement comme prévu, sans tenter les suivantes — confirmation en
+  conditions réelles, pas seulement en théorie. Aucune UI ne lit encore cette
+  table ; le filtre de période (ci-dessus) pourra s'en servir une fois une
+  synchro quotidienne Calendly ajoutée symétriquement (hors périmètre ici).
 
 ## 6. Tâche immédiate
 

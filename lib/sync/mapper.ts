@@ -3,7 +3,15 @@
 
 import type { Database } from '@/types/database'
 import { classifyAudienceType } from './groupByCampaign'
-import type { MetaAction, MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetInsights, MetaActionValue } from './types'
+import type {
+  MetaAction,
+  MetaAd,
+  MetaAdInsights,
+  MetaAdSet,
+  MetaAdSetDailyInsight,
+  MetaAdSetInsights,
+  MetaActionValue,
+} from './types'
 
 type AudienceInsert = Database['public']['Tables']['audiences']['Insert']
 type VideoInsert = Database['public']['Tables']['videos']['Insert']
@@ -31,6 +39,34 @@ export function mapAdSetToAudienceInsert(
     meta_spend: insights ? Number(insights.spend) : 0,
     meta_pixel_leads: insights ? extractActionValue(insights.actions, leadActionType) : 0,
   }
+}
+
+export type AggregatedDailyStat = { statDate: string; metaSpend: number; metaPixelLeads: number }
+
+// Agrège deux séries d'insights quotidiens (barbier + coiffeur) au niveau
+// campagne + date : additionne spend/leads des deux audiences pour chaque
+// date_start rencontrée. Une date absente des deux séries n'apparaît jamais
+// ici (aucun jour synthétique) ; une date présente dans une seule série est
+// tout de même agrégée (l'autre audience compte pour 0 ce jour-là — donnée
+// réelle, pas une valeur inventée). Réutilise extractActionValue ci-dessus,
+// aucune logique d'extraction dupliquée.
+export function aggregateDailyInsights(
+  insightsA: MetaAdSetDailyInsight[],
+  insightsB: MetaAdSetDailyInsight[],
+  leadActionType: string
+): AggregatedDailyStat[] {
+  const byDate = new Map<string, { spend: number; leads: number }>()
+
+  for (const day of [...insightsA, ...insightsB]) {
+    const existing = byDate.get(day.date_start) ?? { spend: 0, leads: 0 }
+    existing.spend += Number(day.spend)
+    existing.leads += extractActionValue(day.actions, leadActionType)
+    byDate.set(day.date_start, existing)
+  }
+
+  return Array.from(byDate.entries())
+    .map(([statDate, { spend, leads }]) => ({ statDate, metaSpend: spend, metaPixelLeads: leads }))
+    .sort((a, b) => (a.statDate < b.statDate ? -1 : a.statDate > b.statDate ? 1 : 0))
 }
 
 export function mapAdToVideoInsert(audienceId: string, ad: MetaAd, insights: MetaAdInsights | null): VideoInsert {

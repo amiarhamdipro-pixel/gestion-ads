@@ -2,7 +2,7 @@
 // principe que meta-test.mjs (Phase 0) sous forme de fonctions typées et
 // réutilisables. N'écrit rien en base : voir mapper.ts / groupByCampaign.ts.
 
-import type { MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetInsights } from './types'
+import type { MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetDailyInsight, MetaAdSetInsights } from './types'
 
 type MetaApiErrorResponse = {
   error: { message: string; code: number }
@@ -87,6 +87,21 @@ export async function fetchAdSetInsights(
     date_preset: datePreset,
   })
   return page.data[0] ?? null
+}
+
+// Insights quotidiens (time_increment=1) : une ligne par jour réellement
+// retourné par Meta, jamais un jour synthétique pour une date sans donnée
+// (voir syncCampaignDailyStats.ts, qui n'insère que les dates reçues ici).
+// Même pagination que les autres endpoints insights (metaApiGetAll).
+export async function fetchAdSetDailyInsights(
+  adSetId: string,
+  datePreset = 'maximum'
+): Promise<MetaAdSetDailyInsight[]> {
+  return metaApiGetAll<MetaAdSetDailyInsight>(`${adSetId}/insights`, {
+    fields: 'date_start,date_stop,spend,actions',
+    time_increment: '1',
+    date_preset: datePreset,
+  })
 }
 
 export async function fetchAdSetAds(adSetId: string): Promise<MetaAd[]> {
