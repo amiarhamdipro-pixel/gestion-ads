@@ -15,6 +15,14 @@ export function trackingGap(realAppointmentsCount: number, metaPixelLeads: numbe
   return realAppointmentsCount - metaPixelLeads
 }
 
+// Part des RDV réels effectivement suivis par le pixel Meta (leads Meta ÷ RDV
+// réels) — même paire de valeurs que trackingGap, exprimée en ratio plutôt
+// qu'en écart absolu (colonne "Tracking" du tableau de la vue d'ensemble).
+export function metaTrackingRate(metaPixelLeads: number, realAppointmentsCount: number): number | null {
+  if (realAppointmentsCount <= 0) return null
+  return metaPixelLeads / realAppointmentsCount
+}
+
 // Coût pixel, PAS le coût réel (dépensé ÷ RDV Calendly, cf. realCostPerAppointment) :
 // utile tant que Calendly n'est pas branché, à ne jamais présenter comme le coût/lead réel.
 export function costPerMetaPixelLead(metaSpend: number, metaPixelLeads: number): number | null {

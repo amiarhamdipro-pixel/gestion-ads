@@ -216,12 +216,9 @@ export default async function ComparisonPage() {
   }))
 
   return (
-    <main style={{ maxWidth: 720, margin: '3rem auto', fontFamily: 'sans-serif', color: ink }}>
-      <Link href="/dashboard" style={{ fontSize: 12.5, color: muted, textDecoration: 'none' }}>
-        ← Vue d&apos;ensemble
-      </Link>
-      <h1 style={{ fontWeight: 600, fontSize: 23, marginTop: 8 }}>Comparaison</h1>
-      <p style={{ color: muted, fontSize: 13.5, marginTop: 3 }}>Toutes les campagnes ramenées à armes égales</p>
+    <main style={{ padding: '32px 32px 56px', color: ink }}>
+      <h1 style={{ fontWeight: 700, fontSize: 25, letterSpacing: '-.01em' }}>Comparaison</h1>
+      <p style={{ color: muted, fontSize: 13.5, marginTop: 4 }}>Toutes les campagnes ramenées à armes égales</p>
 
       {!profile?.client_id ? (
         <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>

@@ -1,16 +1,12 @@
-// Graphe combiné leads Meta (barres) / montant dépensé (courbe), style repris
-// de dashboard-maquette_1.html sans copier sa feuille de style. SVG fait main
-// (pas de dépendance graphique dans le projet — la maquette utilisait Chart.js
-// via un <script> CDN, jamais installé comme dépendance npm).
+// Graphe combiné rendez-vous réels (barres) / montant dépensé (courbe). Style
+// épuré inspiré de MAQUETTE-UI.png (padding, légende, axes discrets) mais
+// représentation par campagne conservée (X = numéro de campagne), pas par
+// date comme dans la maquette : ce n'est pas notre logique métier. SVG fait
+// main (pas de dépendance graphique dans le projet).
 
-import { campaignDurationDays, metaPixelLeadsPerDay, spendPerDay } from '@/lib/calculations'
-
-const ink = '#16172E'
-const muted = '#71748C'
-const faint = '#9A9DB2'
-const line = '#E4E7F0'
-const accent = '#4A38D1'
-const spendColor = '#E28234'
+import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
+import { faint, indigo, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
+import { InfoIcon } from './icons'
 
 export type OverviewMode = 'total' | 'day'
 
@@ -19,10 +15,11 @@ type ChartCampaign = {
   start_date: string | null
   end_date: string | null
   meta_spend: number
-  meta_pixel_leads: number
+  manual_appointments_adjustment: number
+  calendlyAppointments: number
 }
 
-type ChartPoint = { campaign_number: number; leads: number; spend: number }
+type ChartPoint = { campaign_number: number; appointments: number; spend: number }
 
 function barPath(x: number, width: number, top: number, bottom: number, radius: number): string {
   const height = bottom - top
@@ -33,93 +30,144 @@ function barPath(x: number, width: number, top: number, bottom: number, radius: 
 export default function OverviewChart({
   campaigns,
   mode = 'total',
+  onModeChange,
 }: {
   campaigns: ChartCampaign[]
   mode?: OverviewMode
+  onModeChange?: (mode: OverviewMode) => void
 }) {
   const points: ChartPoint[] = []
   for (const c of campaigns) {
+    const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
     if (mode === 'total') {
-      points.push({ campaign_number: c.campaign_number, leads: c.meta_pixel_leads, spend: c.meta_spend })
+      points.push({ campaign_number: c.campaign_number, appointments: realCount, spend: c.meta_spend })
       continue
     }
     const duration = campaignDurationDays(c.start_date, c.end_date)
-    const leads = metaPixelLeadsPerDay(c.meta_pixel_leads, duration)
+    const appointments = appointmentsPerDay(realCount, duration)
     const spend = spendPerDay(c.meta_spend, duration)
-    if (leads === null || spend === null) continue
-    points.push({ campaign_number: c.campaign_number, leads, spend })
+    if (appointments === null || spend === null) continue
+    points.push({ campaign_number: c.campaign_number, appointments, spend })
   }
+
+  const modeToggle = onModeChange ? (
+    <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: 999, padding: 3, flexShrink: 0 }}>
+      {(['total', 'day'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onModeChange(m)}
+          style={{
+            border: 0,
+            borderRadius: 999,
+            padding: '5px 12px',
+            fontSize: 12,
+            cursor: 'pointer',
+            background: mode === m ? surface : 'transparent',
+            fontWeight: mode === m ? 600 : 400,
+          }}
+        >
+          {m === 'total' ? 'Totaux' : 'Par jour'}
+        </button>
+      ))}
+    </div>
+  ) : null
+
+  const titleRow = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 15.5, color: ink, margin: 0 }}>
+          Évolution des rendez-vous et du dépensé
+        </h2>
+        <InfoIcon size={14} style={{ color: faint }} />
+      </div>
+      {modeToggle}
+    </div>
+  )
 
   if (points.length === 0) {
     return (
-      <div
-        style={{
-          background: '#FFFFFF',
-          border: `1px solid ${line}`,
-          borderRadius: 16,
-          padding: 32,
-          textAlign: 'center',
-          color: muted,
-          fontSize: 13.5,
-        }}
-      >
-        {mode === 'day' && campaigns.length > 0
-          ? 'Aucune campagne avec une durée connue (date de fin non renseignée).'
-          : 'Aucune campagne à afficher pour le moment.'}
+      <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+        {titleRow}
+        <div style={{ padding: '28px 0 6px', textAlign: 'center', color: muted, fontSize: 13.5 }}>
+          {mode === 'day' && campaigns.length > 0
+            ? 'Aucune campagne avec une durée connue (date de fin non renseignée).'
+            : 'Aucune campagne à afficher pour le moment.'}
+        </div>
       </div>
     )
   }
 
-  const leadsLabel = mode === 'day' ? 'Leads Meta / jour' : 'Leads Meta (pixel)'
-  const spendLabel = mode === 'day' ? 'Dépensé / jour' : 'Montant dépensé'
+  const hasAppointments = points.some((p) => p.appointments > 0)
+  const appointmentsLabel = mode === 'day' ? 'Rendez-vous / jour' : 'Rendez-vous'
+  const spendLabel = mode === 'day' ? 'Dépensé / jour' : 'Dépensé (€)'
 
   const width = 640
-  const height = 260
-  const marginLeft = 34
-  const marginRight = 40
-  const marginTop = 12
-  const marginBottom = 28
+  const height = 250
+  const marginLeft = 36
+  const marginRight = 42
+  const marginTop = 14
+  const marginBottom = 26
   const plotWidth = width - marginLeft - marginRight
   const plotHeight = height - marginTop - marginBottom
   const baseline = marginTop + plotHeight
 
-  const maxLeads = Math.max(1, ...points.map((p) => p.leads))
+  const maxAppointments = Math.max(1, ...points.map((p) => p.appointments))
   const maxSpend = Math.max(1, ...points.map((p) => p.spend))
 
   const slot = plotWidth / points.length
-  const barWidth = Math.min(24, slot * 0.5)
+  const barWidth = Math.min(22, slot * 0.44)
 
-  const yForLeads = (leads: number) => baseline - (leads / maxLeads) * plotHeight
+  const yForAppointments = (appointments: number) => baseline - (appointments / maxAppointments) * plotHeight
   const yForSpend = (spend: number) => baseline - (spend / maxSpend) * plotHeight
   const xCenter = (index: number) => marginLeft + slot * index + slot / 2
 
   const linePoints = points.map((p, i) => `${xCenter(i)},${yForSpend(p.spend)}`).join(' ')
-  const gridTicks = [0, 0.25, 0.5, 0.75, 1]
+  const gridTicks = [0, 0.5, 1]
   const fmtSpend = (n: number) => n.toFixed(2).replace('.', ',')
   const fmtSpendAxis = (n: number) =>
     mode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR')
-  const fmtLeads = (n: number) =>
+  const fmtAppointments = (n: number) =>
     mode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR')
 
   return (
-    <div style={{ background: '#FFFFFF', border: `1px solid ${line}`, borderRadius: 16, padding: 20 }}>
-      <div style={{ display: 'flex', gap: 16, fontSize: 12.5, color: muted, marginBottom: 6 }}>
+    <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+      {titleRow}
+      <p style={{ fontSize: 12, color: faint, margin: '2px 0 14px' }}>Par campagne (n° 1 à 20)</p>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 12.5, color: muted, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <i style={{ width: 12, height: 12, borderRadius: 4, background: accent, display: 'inline-block' }} />
-          {leadsLabel}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <i style={{ width: 16, height: 3, borderRadius: 2, background: spendColor, display: 'inline-block' }} />
+          <svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+            <path d="M1 7 L8 4 L14 6 L21 3" fill="none" stroke={indigo} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="14" cy="6" r="2.3" fill={indigo} stroke="#FFFFFF" strokeWidth={1.2} />
+          </svg>
           {spendLabel}
         </span>
+        {hasAppointments ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <i style={{ width: 11, height: 11, borderRadius: 3.5, background: violet, display: 'inline-block' }} />
+            {appointmentsLabel}
+          </span>
+        ) : (
+          <span style={{ fontSize: 12, color: faint }}>Aucun rendez-vous rattaché aux campagnes</span>
+        )}
       </div>
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
         style={{ width: '100%', height: 'auto', display: 'block' }}
         role="img"
-        aria-label={`${leadsLabel} et ${spendLabel.toLowerCase()} par campagne`}
+        aria-label={
+          hasAppointments
+            ? `${appointmentsLabel} et ${spendLabel.toLowerCase()} par campagne`
+            : `${spendLabel} par campagne — aucun rendez-vous rattaché`
+        }
       >
+        <style>{`
+          .ov-bar, .ov-dot { transition: opacity .15s ease; }
+          .ov-bar:hover, .ov-dot:hover { opacity: .72; }
+        `}</style>
+
         {gridTicks.map((t) => (
           <line
             key={t}
@@ -127,25 +175,27 @@ export default function OverviewChart({
             x2={width - marginRight}
             y1={marginTop + plotHeight * (1 - t)}
             y2={marginTop + plotHeight * (1 - t)}
-            stroke={line}
+            stroke={lineColor}
             strokeWidth={1}
           />
         ))}
 
-        {points.map((p, i) => {
-          const top = yForLeads(p.leads)
-          const x = xCenter(i) - barWidth / 2
-          return (
-            <path key={p.campaign_number} d={barPath(x, barWidth, top, baseline, 4)} fill={accent}>
-              <title>{`Campagne ${p.campaign_number} — ${fmtLeads(p.leads)} lead(s) Meta${mode === 'day' ? ' / jour' : ''}`}</title>
-            </path>
-          )
-        })}
+        {hasAppointments
+          ? points.map((p, i) => {
+              const top = yForAppointments(p.appointments)
+              const x = xCenter(i) - barWidth / 2
+              return (
+                <path key={p.campaign_number} className="ov-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
+                  <title>{`Campagne ${p.campaign_number} — ${fmtAppointments(p.appointments)} rendez-vous${mode === 'day' ? ' / jour' : ''}`}</title>
+                </path>
+              )
+            })
+          : null}
 
         <polyline
           points={linePoints}
           fill="none"
-          stroke={spendColor}
+          stroke={indigo}
           strokeWidth={2}
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -153,10 +203,11 @@ export default function OverviewChart({
         {points.map((p, i) => (
           <circle
             key={p.campaign_number}
+            className="ov-dot"
             cx={xCenter(i)}
             cy={yForSpend(p.spend)}
-            r={4}
-            fill={spendColor}
+            r={3.6}
+            fill={indigo}
             stroke="#FFFFFF"
             strokeWidth={2}
           >
@@ -165,15 +216,17 @@ export default function OverviewChart({
         ))}
 
         {points.map((p, i) => (
-          <text key={p.campaign_number} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={11.5} fill={ink}>
+          <text key={p.campaign_number} x={xCenter(i)} y={height - 7} textAnchor="middle" fontSize={11} fill={muted}>
             {p.campaign_number}
           </text>
         ))}
 
-        <text x={marginLeft} y={marginTop - 2} fontSize={10.5} fill={faint}>
-          {fmtLeads(maxLeads)} leads
-        </text>
-        <text x={width - marginRight} y={marginTop - 2} fontSize={10.5} fill={faint} textAnchor="end">
+        {hasAppointments ? (
+          <text x={marginLeft} y={marginTop - 3} fontSize={10} fill={faint}>
+            {fmtAppointments(maxAppointments)} RDV
+          </text>
+        ) : null}
+        <text x={width - marginRight} y={marginTop - 3} fontSize={10} fill={faint} textAnchor="end">
           {fmtSpendAxis(maxSpend)} €
         </text>
       </svg>

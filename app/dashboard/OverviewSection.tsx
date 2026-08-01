@@ -5,11 +5,28 @@ import Link from 'next/link'
 import {
   appointmentsPerDay,
   campaignDurationDays,
+  metaTrackingRate,
   realAppointments,
   realCostPerAppointment,
   spendPerDay,
 } from '@/lib/calculations'
-import { accent, faint, formatCost, formatEur, formatPeriod, line, muted, surface, surfaceAlt, radius } from './format'
+import {
+  accent,
+  faint,
+  formatCost,
+  formatEur,
+  formatPct,
+  formatPeriod,
+  green,
+  amber,
+  red,
+  line,
+  muted,
+  softBg,
+  surface,
+  surfaceAlt,
+  radius,
+} from './format'
 import OverviewChart, { type OverviewMode } from './OverviewChart'
 import EndDateEditor from './EndDateEditor'
 
@@ -24,36 +41,44 @@ type Campaign = {
   calendlyAppointments: number
 }
 
+// Seuils de couleur du badge "Tracking" (part des RDV réels suivis par le
+// pixel Meta). Choix de présentation — pas une règle métier nouvelle : la
+// valeur elle-même (metaTrackingRate) est la même que le KPI "Tracking Meta".
+function trackingTone(rate: number | null): { color: string; bg: string } | null {
+  if (rate === null) return null
+  if (rate >= 0.95) return { color: green, bg: softBg(green, 0.14) }
+  if (rate >= 0.8) return { color: amber, bg: softBg(amber, 0.16) }
+  return { color: red, bg: softBg(red, 0.14) }
+}
+
 export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Campaign[]; isAdmin: boolean }) {
   const [mode, setMode] = useState<OverviewMode>('total')
 
   const excludedCount =
     mode === 'day' ? campaigns.filter((c) => campaignDurationDays(c.start_date, c.end_date) === null).length : 0
 
+  // Calculé une seule fois par campagne, consommé par les deux rendus
+  // (tableau desktop/tablette, cartes mobile — cf. media query ci-dessous).
+  const rows = campaigns.map((campaign) => {
+    const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
+    const durationUnavailable = mode === 'day' && duration === null
+    const realCount = realAppointments(campaign.calendlyAppointments, campaign.manual_appointments_adjustment)
+    const spendValue = mode === 'day' ? spendPerDay(campaign.meta_spend, duration) : campaign.meta_spend
+    const appointmentsValue = mode === 'day' ? appointmentsPerDay(realCount, duration) : realCount
+    const costPerAppt = realCostPerAppointment(campaign.meta_spend, realCount)
+    const trackingRate = metaTrackingRate(campaign.meta_pixel_leads, realCount)
+    return { campaign, durationUnavailable, spendValue, appointmentsValue, costPerAppt, trackingRate, tone: trackingTone(trackingRate) }
+  })
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${line}`, borderRadius: 999, padding: 3 }}>
-          {(['total', 'day'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              style={{
-                border: 0,
-                borderRadius: 999,
-                padding: '6px 13px',
-                fontSize: 12.5,
-                cursor: 'pointer',
-                background: mode === m ? surface : 'transparent',
-                fontWeight: mode === m ? 600 : 400,
-              }}
-            >
-              {m === 'total' ? 'Totaux' : 'Par jour'}
-            </button>
-          ))}
-        </div>
-      </div>
+      <style>{`
+        .amerys-card-list { display: none; }
+        @media (max-width: 640px) {
+          .amerys-table-wrap { display: none; }
+          .amerys-card-list { display: flex; }
+        }
+      `}</style>
 
       {mode === 'day' && excludedCount > 0 ? (
         <p style={{ color: muted, fontSize: 12.5, marginBottom: 10 }}>
@@ -62,90 +87,192 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
         </p>
       ) : null}
 
-      <div style={{ margin: '10px 0 20px' }}>
-        <OverviewChart campaigns={campaigns} mode={mode} />
+      <div style={{ margin: '0 0 32px' }}>
+        <OverviewChart campaigns={campaigns} mode={mode} onModeChange={setMode} />
       </div>
 
-      <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1.4fr 1fr 1fr 1fr',
-            gap: 14,
-            padding: '10px 18px',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '.05em',
-            textTransform: 'uppercase',
-            color: faint,
-            background: surfaceAlt,
-            borderBottom: `1px solid ${line}`,
-          }}
-        >
-          <span>Campagne</span>
-          <span>{mode === 'day' ? 'Dépensé / jour' : 'Dépensé'}</span>
-          <span>{mode === 'day' ? 'RDV / jour' : 'RDV Calendly'}</span>
-          <span>Coût réel / RDV</span>
-        </div>
-        {campaigns.map((campaign, index) => {
-          const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
-          const durationUnavailable = mode === 'day' && duration === null
-          const realCount = realAppointments(campaign.calendlyAppointments, campaign.manual_appointments_adjustment)
-          const spendValue = mode === 'day' ? spendPerDay(campaign.meta_spend, duration) : campaign.meta_spend
-          const appointmentsValue = mode === 'day' ? appointmentsPerDay(realCount, duration) : realCount
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes</h2>
+      </div>
 
-          return (
-            <div
-              key={campaign.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1.4fr 1fr 1fr 1fr',
-                gap: 14,
-                alignItems: 'center',
-                padding: '15px 18px',
-                borderTop: index === 0 ? 'none' : `1px solid ${line}`,
-              }}
-            >
-              <div>
-                <Link
-                  href={`/dashboard/campaigns/${campaign.id}`}
-                  style={{ fontWeight: 600, fontSize: 14, color: accent, textDecoration: 'none' }}
-                >
-                  Campagne {campaign.campaign_number} ›
-                </Link>
-                <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
-                  {formatPeriod(campaign.start_date, campaign.end_date)}
-                </div>
-                {isAdmin ? (
-                  <EndDateEditor
-                    campaignId={campaign.id}
-                    startDate={campaign.start_date}
-                    initialEndDate={campaign.end_date}
-                  />
-                ) : null}
-              </div>
-              {durationUnavailable ? (
-                <div style={{ fontSize: 12.5, color: faint, gridColumn: 'span 2' }}>Durée non disponible</div>
-              ) : (
-                <>
-                  <div style={{ fontWeight: 500, fontSize: 15 }}>
+      {/* Desktop/tablette : tableau complet, avec scroll horizontal en filet de
+          sécurité (overflow-x: auto) si jamais l'espace disponible est serré. */}
+      <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+            <thead>
+              <tr>
+                {['#', 'Campagne', 'Période', mode === 'day' ? 'Dépensé / j' : 'Dépensé', mode === 'day' ? 'RDV / j' : 'Rendez-vous', 'Coût / RDV réel', 'Tracking'].map(
+                  (label, i) => (
+                    <th
+                      key={label}
+                      style={{
+                        textAlign: i === 1 || i === 2 ? 'left' : 'right',
+                        padding: '13px 16px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        letterSpacing: '.04em',
+                        textTransform: 'uppercase',
+                        color: faint,
+                        background: surfaceAlt,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ campaign, durationUnavailable, spendValue, appointmentsValue, costPerAppt, trackingRate, tone }, index) => (
+                <tr key={campaign.id} style={{ borderTop: index === 0 ? 'none' : `1px solid ${line}` }}>
+                  <td style={{ padding: '14px 16px', fontSize: 13.5, fontWeight: 700, color: accent, textAlign: 'right' }}>
+                    {campaign.campaign_number}
+                  </td>
+                  <td style={{ padding: '14px 16px' }}>
+                    <Link
+                      href={`/dashboard/campaigns/${campaign.id}`}
+                      style={{ fontWeight: 600, fontSize: 14, color: accent, textDecoration: 'none' }}
+                    >
+                      Campagne {campaign.campaign_number}
+                    </Link>
+                    {isAdmin ? (
+                      <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+                    ) : null}
+                  </td>
+                  <td style={{ padding: '14px 16px', fontSize: 13, color: muted, whiteSpace: 'nowrap' }}>
+                    {formatPeriod(campaign.start_date, campaign.end_date)}
+                  </td>
+
+                  {durationUnavailable ? (
+                    <td colSpan={2} style={{ padding: '14px 16px', fontSize: 12.5, color: faint, textAlign: 'right' }}>
+                      Durée non disponible
+                    </td>
+                  ) : (
+                    <>
+                      <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {spendValue === null ? '—' : `${formatEur(spendValue)} €`}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>
+                        {appointmentsValue === null
+                          ? '—'
+                          : mode === 'day'
+                            ? appointmentsValue.toFixed(2).replace('.', ',')
+                            : appointmentsValue}
+                      </td>
+                    </>
+                  )}
+
+                  <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    {formatCost(costPerAppt)}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                    {tone ? (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: 999,
+                          color: tone.color,
+                          background: tone.bg,
+                        }}
+                      >
+                        {formatPct(trackingRate)}
+                      </span>
+                    ) : (
+                      <span style={{ color: faint, fontSize: 12.5 }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mobile (<=640px) : une carte par campagne, aucune coupure horizontale. */}
+      <div className="amerys-card-list" style={{ flexDirection: 'column', gap: 12 }}>
+        {rows.map(({ campaign, durationUnavailable, spendValue, appointmentsValue, costPerAppt, trackingRate, tone }) => (
+          <div key={campaign.id} style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: accent }}>#{campaign.campaign_number}</span>
+              <Link
+                href={`/dashboard/campaigns/${campaign.id}`}
+                style={{ fontWeight: 600, fontSize: 15, color: accent, textDecoration: 'none' }}
+              >
+                Campagne {campaign.campaign_number}
+              </Link>
+            </div>
+            <div style={{ fontSize: 12.5, color: muted, marginTop: 3 }}>{formatPeriod(campaign.start_date, campaign.end_date)}</div>
+            {isAdmin ? (
+              <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+            ) : null}
+
+            {durationUnavailable ? (
+              <p style={{ fontSize: 12.5, color: faint, marginTop: 12 }}>Durée non disponible</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    {mode === 'day' ? 'Dépensé / j' : 'Dépensé'}
+                  </div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
                     {spendValue === null ? '—' : `${formatEur(spendValue)} €`}
                   </div>
-                  <div style={{ fontWeight: 500, fontSize: 15 }}>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    {mode === 'day' ? 'RDV / j' : 'Rendez-vous'}
+                  </div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
                     {appointmentsValue === null
                       ? '—'
                       : mode === 'day'
                         ? appointmentsValue.toFixed(2).replace('.', ',')
                         : appointmentsValue}
                   </div>
-                </>
-              )}
-              <div style={{ fontWeight: 500, fontSize: 15 }}>
-                {formatCost(realCostPerAppointment(campaign.meta_spend, realCount))}
+                </div>
               </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginTop: 14,
+                paddingTop: 14,
+                borderTop: `1px solid ${line}`,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  Coût / RDV réel
+                </div>
+                <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatCost(costPerAppt)}</div>
+              </div>
+              {tone ? (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: 999,
+                    color: tone.color,
+                    background: tone.bg,
+                  }}
+                >
+                  {formatPct(trackingRate)}
+                </span>
+              ) : (
+                <span style={{ color: faint, fontSize: 12.5 }}>Tracking —</span>
+              )}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </>
   )

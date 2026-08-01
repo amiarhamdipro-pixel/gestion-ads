@@ -14,24 +14,30 @@ import {
 import KpiCard from '../../KpiCard'
 import {
   accent,
+  amber,
   faint,
   formatCost,
   formatEur,
   formatPeriod,
+  gray,
+  green,
+  indigo,
   ink,
+  lavender,
   line,
   muted,
   radius,
-  spendColor,
+  softBg,
   surface,
   surfaceAlt,
+  violet,
 } from '../../format'
+import { CalendarIcon, ClockIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
 
 // Couleurs d'audience reprises de dashboard-maquette_1.html (badges barber/coiffeur).
 const teal = '#0E9AA7'
 const tealSoft = '#DDF3F5'
 const accentSoft = '#ECE9FB'
-const good = '#12A150'
 
 function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
@@ -143,7 +149,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const costPerLead = costPerMetaPixelLead(campaign.meta_spend, campaign.meta_pixel_leads)
 
   return (
-    <main style={{ maxWidth: 720, margin: '3rem auto', fontFamily: 'sans-serif', color: ink }}>
+    <main style={{ padding: '32px 32px 56px', color: ink }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
         <Link
           href="/dashboard"
@@ -190,32 +196,60 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         {duration !== null ? ` · ${duration} jour${duration > 1 ? 's' : ''}` : ''}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, margin: '20px 0' }}>
-        <KpiCard label="Budget dépensé" color={spendColor} value={`${formatEur(campaign.meta_spend)} €`} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, margin: '20px 0' }}>
         <KpiCard
+          icon={<DollarIcon size={20} />}
+          iconColor={indigo}
+          iconBg={lavender}
+          label="Budget dépensé"
+          value={`${formatEur(campaign.meta_spend)} €`}
+        />
+        <KpiCard
+          icon={<CalendarIcon size={20} />}
+          iconColor={violet}
+          iconBg={lavender}
           label="RDV confirmés"
-          color={accent}
           value={String(realAppointmentsCount)}
           foot="rendez-vous Calendly rattachés"
         />
-        <KpiCard label="Coût réel / RDV" color={ink} value={formatCost(realCostPerAppt)} foot="dépensé ÷ RDV Calendly" />
         <KpiCard
+          icon={<UserIcon size={20} />}
+          iconColor={amber}
+          iconBg={softBg(amber, 0.14)}
+          label="Coût réel / RDV"
+          value={formatCost(realCostPerAppt)}
+          foot="dépensé ÷ RDV Calendly"
+        />
+        <KpiCard
+          icon={<ClockIcon size={20} />}
+          iconColor={green}
+          iconBg={softBg(green, 0.14)}
           label="Durée"
-          color={good}
           value={duration !== null ? `${duration} j` : '—'}
           foot={duration === null ? 'non disponible' : undefined}
         />
-        <KpiCard label="Leads Meta" color={accent} value={String(campaign.meta_pixel_leads)} foot="conversions pixel" />
         <KpiCard
+          icon={<TrendingUpIcon size={20} />}
+          iconColor={gray}
+          iconBg={softBg(gray, 0.12)}
+          label="Leads Meta"
+          value={String(campaign.meta_pixel_leads)}
+          foot="conversions pixel"
+        />
+        <KpiCard
+          icon={<DollarIcon size={20} />}
+          iconColor={gray}
+          iconBg={softBg(gray, 0.12)}
           label="Coût / lead"
-          color={ink}
           value={formatCost(costPerLead)}
           foot="dépensé ÷ leads Meta (pixel)"
         />
         {isAdmin ? (
           <KpiCard
+            icon={<TrackingIcon size={20} />}
+            iconColor={gray}
+            iconBg={softBg(gray, 0.12)}
             label="Écart de tracking"
-            color={muted}
             value={String(trackingGapValue)}
             foot="RDV Calendly − leads Meta"
           />
