@@ -138,14 +138,38 @@ code a changé depuis) :
   Chaque rendez-vous est comparé au préalable à la ligne existante
   (`event_type_uri`, `start_time`, `status`, `acquisition_channel`,
   `campaign_id`) ; seuls les créations/changements réels sont upsertés (par
-  lots de 50), un rendez-vous identique n'est pas réécrit. `campaign_id`
-  toujours `null` (aucun rapprochement Meta ici). `acquisition_channel` rempli
-  via la question de formulaire confirmée en Phase 0 (configurable via
-  `CALENDLY_ACQUISITION_CHANNEL_QUESTION`). Testé avec `scripts/test-sync-appointments.ts` :
-  1145 rendez-vous lus sur deux exécutions successives sans changement
-  Calendly ; 2e run un vrai no-op (0 création, 0 mise à jour, 1145 ignorés
-  car identiques), total en base stable, aucun `campaign_id` renseigné, 995
-  rendez-vous avec `acquisition_channel` renseigné. Aucune donnée personnelle
+  lots de 50), un rendez-vous identique n'est pas réécrit. `acquisition_channel`
+  rempli via la question de formulaire confirmée en Phase 0 (configurable via
+  `CALENDLY_ACQUISITION_CHANNEL_QUESTION`).
+- **Rattachement automatique `campaign_id` par fenêtre de dates, fuseau
+  Europe/Paris** (`lib/calculations.ts`, `campaignsMatchingAppointment` :
+  fonction pure, testée isolément) : un rendez-vous est rattaché à la
+  campagne du même client dont `start_date` 00:00:00 – `end_date` 23:59:59,
+  interprétées en **heure locale Europe/Paris** (pas UTC — le client et ses
+  rendez-vous Calendly sont en France ; une conversion naïve en UTC décale
+  les bornes de 1h/2h selon la saison), contient son `start_time`. Décalage
+  CET/CEST calculé via `Intl.DateTimeFormat` (aucune dépendance ajoutée),
+  correct de part et d'autre des changements d'heure (00:00:00/23:59:59 ne
+  tombent jamais dans l'heure ambiguë du changement). Campagnes sans
+  `start_date`/`end_date` ignorées. Aucune fenêtre correspondante →
+  `campaign_id = null`. Plusieurs fenêtres chevauchantes → erreur explicite
+  journalisée, aucune attribution arbitraire (valeur existante préservée,
+  `null` pour une création). Aucune ventilation Barbier/Coiffeur.
+  Testé avec `scripts/test-sync-appointments.ts` : tests unitaires purs
+  (fenêtre, hors fenêtre, chevauchement, bornes hiver/été/changements
+  d'heure 2026-03-29 et 2026-10-25) puis **tests en conditions réelles avec
+  restauration** — fenêtre réelle temporaire sur la campagne n°19
+  (2026-06-30 → 2026-07-17, Europe/Paris) : 60 rendez-vous réellement
+  rattachés, vérifiés en base, puis `end_date` restaurée à `null` et
+  `campaign_id` revenu à `null` sur ces 60 lignes via la synchro elle-même
+  (pas d'UPDATE manuel) ; chevauchement réel temporaire entre les
+  campagnes n°19 et n°20 (zone 2026-07-18 → 2026-07-20) : 4 rendez-vous
+  réels dans la zone, 0 attribué, 4 erreurs explicites journalisées, les 60
+  rendez-vous hors recouvrement restent correctement rattachés ; puis
+  restauration complète (les deux `end_date` remis à `null`, vérifié
+  indépendamment en base) et rejeu sans changement (0 création, 0 mise à
+  jour, 1145 ignorés). Base finale strictement identique à l'état initial
+  (1145 rendez-vous, 0 `campaign_id` non nul). Aucune donnée personnelle
   lue ni stockée (nom/email/téléphone/réponses libres).
 
 ## 6. Tâche immédiate
