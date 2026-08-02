@@ -77,7 +77,7 @@ export default function Header({
             type="button"
             onClick={toggleMenu}
             className="amerys-menu-label"
-            aria-label="Ouvrir le menu"
+            aria-label={menuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
             aria-expanded={menuOpen}
             aria-controls="amerys-sidebar-nav"
             style={{
@@ -129,9 +129,11 @@ export default function Header({
             {role ? (roleLabel[role] ?? role) : '—'}
           </div>
 
-          <Suspense fallback={null}>
-            <DashboardDateFilter />
-          </Suspense>
+          {isAdmin ? (
+            <Suspense fallback={null}>
+              <DashboardDateFilter />
+            </Suspense>
+          ) : null}
 
           {isAdmin ? <SyncMetaButton /> : null}
           {isAdmin ? <SyncCalendlyButton /> : null}

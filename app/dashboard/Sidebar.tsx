@@ -37,8 +37,20 @@ export default function Sidebar({
     ...(isAdmin ? [{ label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon }] : []),
   ]
 
+  // Ferme toujours, ne bascule jamais : contrairement au bouton hamburger
+  // (Header.tsx, un vrai toggle), ce bouton et les liens de nav promettent
+  // "fermer" — un .click() inconditionnel sur la case à cocher la
+  // rouvrirait si jamais elle était déjà décochée (ex. focus clavier sur ce
+  // bouton alors que le tiroir est fermé, hors écran mais toujours dans le
+  // DOM). Seule source de vérité : la case #amerys-menu (voir layout.tsx) ;
+  // .click() reste le seul moyen de la faire basculer en générant le même
+  // événement 'change' natif que Header.tsx écoute pour synchroniser
+  // aria-expanded, sans dupliquer cette logique ici.
   function closeMenu() {
-    document.getElementById('amerys-menu')?.click()
+    const checkbox = document.getElementById('amerys-menu') as HTMLInputElement | null
+    if (checkbox?.checked) {
+      checkbox.click()
+    }
   }
 
   return (
@@ -97,6 +109,7 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={query ? `${item.href}?${query}` : item.href}
+              onClick={closeMenu}
               style={{
                 display: 'flex',
                 alignItems: 'center',

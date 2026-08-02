@@ -5,7 +5,6 @@ import { logError } from '@/lib/logger'
 import {
   campaignDurationDays,
   costPerMetaPixelLead,
-  hookRatePlay,
   hookRateThruplay,
   isDateRangePreset,
   parisDateFromInstant,
@@ -197,7 +196,7 @@ export default async function CampaignDetailPage({
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, name, impressions, video_plays, thruplays, video_p25, video_p50, video_p75, video_p100'
+            'id, audience_id, name, impressions, video_plays, thruplays, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
@@ -479,7 +478,6 @@ export default async function CampaignDetailPage({
               const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
               const isBestCostPerLead = bestCostPerLead !== null && audienceCostPerLead === bestCostPerLead
 
-              const hookPlay = video ? hookRatePlay(video.video_plays, video.impressions) : null
               const hookThru = video ? hookRateThruplay(video.thruplays, video.impressions) : null
               const retention = video ? retentionRate(video.video_p100, video.video_p25) : null
 
@@ -602,25 +600,19 @@ export default async function CampaignDetailPage({
 
                 {video ? (
                   <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 12 }}>
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontWeight: 600, fontSize: 16 }}>{video.impressions.toLocaleString('fr-FR')}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Impressions</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.video_plays.toLocaleString('fr-FR')}</div>
-                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Plays</div>
-                      </div>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.thruplays.toLocaleString('fr-FR')}</div>
-                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>ThruPlays</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>
+                          {video.average_watch_time_seconds.toLocaleString('fr-FR')} s
+                        </div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Durée moyenne de lecture</div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 13 }}>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hookPlay)}</div>
-                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche (play)</div>
-                      </div>
                       <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
                         <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hookThru)}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche (thruplay)</div>

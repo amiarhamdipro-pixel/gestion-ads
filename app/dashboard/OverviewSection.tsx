@@ -99,29 +99,35 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
           sécurité (overflow-x: auto) si jamais l'espace disponible est serré. */}
       <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isAdmin ? 720 : 620 }}>
             <thead>
               <tr>
-                {['#', 'Campagne', 'Période', mode === 'day' ? 'Dépensé / j' : 'Dépensé', mode === 'day' ? 'RDV / j' : 'Rendez-vous', 'Coût / RDV réel', 'Tracking'].map(
-                  (label, i) => (
-                    <th
-                      key={label}
-                      style={{
-                        textAlign: i === 1 || i === 2 ? 'left' : 'right',
-                        padding: '13px 16px',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: '.04em',
-                        textTransform: 'uppercase',
-                        color: faint,
-                        background: surfaceAlt,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {label}
-                    </th>
-                  )
-                )}
+                {[
+                  '#',
+                  'Campagne',
+                  'Période',
+                  mode === 'day' ? 'Dépensé / j' : 'Dépensé',
+                  mode === 'day' ? 'RDV / j' : 'Rendez-vous',
+                  'Coût / RDV réel',
+                  ...(isAdmin ? ['Tracking'] : []),
+                ].map((label, i) => (
+                  <th
+                    key={label}
+                    style={{
+                      textAlign: i === 1 || i === 2 ? 'left' : 'right',
+                      padding: '13px 16px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '.04em',
+                      textTransform: 'uppercase',
+                      color: faint,
+                      background: surfaceAlt,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -167,25 +173,27 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                   <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {formatCost(costPerAppt)}
                   </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    {tone ? (
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          padding: '3px 10px',
-                          borderRadius: 999,
-                          color: tone.color,
-                          background: tone.bg,
-                        }}
-                      >
-                        {formatPct(trackingRate)}
-                      </span>
-                    ) : (
-                      <span style={{ color: faint, fontSize: 12.5 }}>—</span>
-                    )}
-                  </td>
+                  {isAdmin ? (
+                    <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                      {tone ? (
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: '3px 10px',
+                            borderRadius: 999,
+                            color: tone.color,
+                            background: tone.bg,
+                          }}
+                        >
+                          {formatPct(trackingRate)}
+                        </span>
+                      ) : (
+                        <span style={{ color: faint, fontSize: 12.5 }}>—</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -254,22 +262,24 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                 </div>
                 <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatCost(costPerAppt)}</div>
               </div>
-              {tone ? (
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: '3px 10px',
-                    borderRadius: 999,
-                    color: tone.color,
-                    background: tone.bg,
-                  }}
-                >
-                  {formatPct(trackingRate)}
-                </span>
-              ) : (
-                <span style={{ color: faint, fontSize: 12.5 }}>Tracking —</span>
-              )}
+              {isAdmin ? (
+                tone ? (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: '3px 10px',
+                      borderRadius: 999,
+                      color: tone.color,
+                      background: tone.bg,
+                    }}
+                  >
+                    {formatPct(trackingRate)}
+                  </span>
+                ) : (
+                  <span style={{ color: faint, fontSize: 12.5 }}>Tracking —</span>
+                )
+              ) : null}
             </div>
           </div>
         ))}
