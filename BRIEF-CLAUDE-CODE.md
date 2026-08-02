@@ -361,6 +361,37 @@ code a changé depuis) :
   fraîchement écrites par ce même appel (filtre de période nourri) ; 9
   nouvelles lignes `sync_runs` (exactement une par campagne totaux, aucune
   double exécution).
+- **Bouton admin « Synchroniser Calendly » chaîné : rendez-vous puis
+  quotidien Calendly, en un seul clic** (`app/api/admin/sync/calendly/route.ts`) :
+  `syncAppointments` est `await`é en premier ; seulement s'il se termine
+  sans lever d'exception, `syncCalendlyDailyStats` est lancé ensuite —
+  jamais en parallèle. Si `syncAppointments` échoue, la réponse est un échec
+  explicite unique (`{ error }`, statut 500) et le quotidien n'est jamais
+  tenté. La réponse JSON expose deux rapports strictement séparés :
+  `appointments` (lus/créés/mis à jour/ignorés/erreurs, mapping inchangé de
+  `syncAppointments`) et `daily` (`campaignsProcessed`, `daysUpserted`,
+  `daysWithAppointments`, `daysZeroed`, `errors`) ; `campaignsProcessed` est
+  un nouveau champ ajouté à `SyncCalendlyDailyStatsResult`
+  (`lib/sync/syncCalendlyDailyStats.ts`, simple comptage de
+  `campaign_id` distincts parmi les lignes déjà calculées — aucun changement
+  de calcul, seulement une donnée de rapport supplémentaire). Si le volet
+  quotidien échoue après des rendez-vous déjà synchronisés avec succès, la
+  réponse renvoie `{ appointments, daily: { error } }` — les rendez-vous
+  acquis ne sont jamais perdus ni l'échec masqué. `SyncCalendlyButton.tsx`
+  affiche un résumé court des deux étapes (deux lignes : rendez-vous puis
+  quotidien, avec le nombre de jours mis à jour et de campagnes traitées).
+  Aucun changement Meta, schéma, migration, RLS ni donnée personnelle
+  exposée (toujours campaign_id/start_time uniquement côté quotidien).
+  Validé par un clic réel unique (`fetch()` authentifié, un seul `POST`,
+  ~285 s du fait du volume réel de rendez-vous) : 1146 rendez-vous lus, 0
+  créé/mis à jour (déjà synchronisés, upsert différentiel inchangé), 0
+  erreur ; volet quotidien réussi juste après : 9 campagnes traitées, 130
+  jours upsertés (tous remis à 0, aucun rendez-vous actuellement rattaché à
+  une fenêtre de campagne — état production réel, cohérent avec les
+  restaurations de tests précédentes) ; 130 lignes `campaign_daily_stats`
+  fraîchement mises à jour par ce même appel (filtre de période nourri) ;
+  aucune ligne fraîche avant l'appel (0 → 130), confirmant l'absence de
+  double exécution.
 
 ## 6. Tâche immédiate
 

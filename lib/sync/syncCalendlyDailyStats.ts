@@ -24,6 +24,7 @@ import { parisDateFromInstant } from '@/lib/calculations'
 
 export type SyncCalendlyDailyStatsResult = {
   clientId: string
+  campaignsProcessed: number
   daysWritten: number
   daysWithAppointments: number
   daysZeroed: number
@@ -70,7 +71,7 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
   }
 
   if (allKeys.size === 0) {
-    return { clientId, daysWritten: 0, daysWithAppointments: 0, daysZeroed: 0 }
+    return { clientId, campaignsProcessed: 0, daysWritten: 0, daysWithAppointments: 0, daysZeroed: 0 }
   }
 
   const rows = Array.from(allKeys).map((key) => {
@@ -95,6 +96,7 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
 
   return {
     clientId,
+    campaignsProcessed: new Set(rows.map((row) => row.campaign_id)).size,
     daysWritten: rows.length,
     daysWithAppointments: counts.size,
     daysZeroed: rows.length - counts.size,
