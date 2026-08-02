@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Header from './Header'
@@ -132,7 +133,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       <div className="amerys-body" style={{ display: 'flex', alignItems: 'flex-start' }}>
         <label htmlFor="amerys-menu" className="amerys-backdrop" aria-hidden="true" />
-        <Sidebar userName={profile?.full_name ?? user.email ?? 'Utilisateur'} userEmail={user.email ?? ''} />
+        <Suspense fallback={null}>
+          <Sidebar userName={profile?.full_name ?? user.email ?? 'Utilisateur'} userEmail={user.email ?? ''} />
+        </Suspense>
         <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
       </div>
     </div>

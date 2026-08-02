@@ -300,8 +300,41 @@ code a changé depuis) :
   `syncAppointments()`, compteurs journaliers remis à 0 par
   `syncCalendlyDailyStats()` elle-même — jamais de DELETE/UPDATE manuel).
   Avec `campaign_daily_stats` désormais alimentée des deux côtés (Meta et
-  Calendly), le filtre de période pourra être réimplémenté sur cette base
-  dans une tâche dédiée (toujours hors périmètre ici : aucune UI touchée).
+  Calendly), le filtre de période a pu être réimplémenté sur cette base
+  (voir point suivant).
+- **Filtre global de période réimplémenté sur `campaign_daily_stats`
+  (corrige la version précédente, retirée pour incorrection métier — voir
+  historique)** : filtre partagé Aujourd'hui / 7 derniers jours / 30
+  derniers jours / Ce mois / Personnalisé (`lib/calculations.ts` :
+  `resolveDateRange`, `enumerateDateRange`, fuseau Europe/Paris via
+  `parisDateFromInstant`), persisté dans la query string (`?period=&from=&to=`,
+  `lib/dateRangeQuery.ts`) et conservé entre Vue d'ensemble, Détail campagne
+  et Comparaison (`Sidebar.tsx` propage `useSearchParams().toString()` sur
+  ses liens). Tous les totaux affichés en mode période sont des sommes
+  exactes de `campaign_daily_stats` filtrées par `stat_date` (comparaison de
+  chaînes `YYYY-MM-DD`, aucune conversion UTC nécessaire) : Vue d'ensemble
+  (dépensé, RDV, coût/RDV réel, graphique par jour zero-filled via
+  `OverviewDailyChart.tsx`, tableau campagnes agrégé sur la période) ;
+  Détail campagne (mêmes KPI limités à la période ; les métriques
+  audience/vidéo Meta sans granularité journalière restent affichées en
+  totaux campagne entière, explicitement libellées « (total campagne) ») ;
+  Comparaison (RDV, RDV/jour — dénominateur = durée de la période, uniforme
+  pour toutes les campagnes —, dépensé, coût/RDV réel ; classement vidéos
+  explicitement libellé « toutes périodes confondues »). Aucune estimation
+  depuis les totaux campagnes : `manual_appointments_adjustment` (correctif
+  manuel sans date) n'est jamais appliqué à une somme de période, faute de
+  moyen non arbitraire de l'attribuer à un jour précis. État vide honnête
+  (`EmptyPeriodState.tsx`, aucune grille KPI) si aucune ligne journalière
+  dans la période. `OverviewSection.tsx`/`OverviewChart.tsx` (mode sans
+  filtre) restent inchangés à l'octet près. Aucun changement de schéma,
+  sync, API ou RLS. Validé en conditions réelles sans capture d'écran
+  (requêtes `fetch()` authentifiées, comparaison texte sur le HTML rendu) :
+  fenêtre témoin campagne n°19, 2026-06-30 → 2026-07-17 — Dépensé=500 €,
+  RDV=49, sommes identiques et exactes sur Vue d'ensemble et Détail
+  campagne ; libellés « (total campagne) » et « toutes périodes confondues »
+  présents ; lien Comparaison de la Sidebar conserve le filtre ;
+  `?period=today` (aucune donnée) affiche l'état vide sans grille KPI ;
+  restauration complète des données de test confirmée.
 
 ## 6. Tâche immédiate
 

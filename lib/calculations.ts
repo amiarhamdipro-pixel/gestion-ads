@@ -159,3 +159,78 @@ export function parisDateFromInstant(instant: string): string {
   })
   return formatter.format(new Date(instant))
 }
+
+// ─── Filtre de période global du dashboard ─────────────────────────────────
+// Résolution pure preset -> {start, end} (YYYY-MM-DD, Europe/Paris). Le
+// filtrage lui-même se fait désormais directement en base sur
+// campaign_daily_stats.stat_date (comparaison de chaînes YYYY-MM-DD, déjà
+// des dates calendaires — aucune conversion UTC nécessaire ici, contrairement
+// à campaignsMatchingAppointment qui compare un instant à une fenêtre).
+
+export type DateRangePreset = 'today' | '7d' | '30d' | 'month' | 'custom'
+
+const DATE_RANGE_PRESET_VALUES: readonly DateRangePreset[] = ['today', '7d', '30d', 'month', 'custom']
+
+export function isDateRangePreset(value: string | undefined | null): value is DateRangePreset {
+  return !!value && (DATE_RANGE_PRESET_VALUES as readonly string[]).includes(value)
+}
+
+export type ResolvedDateRange = { start: string; end: string }
+
+function addDaysToDateString(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const shiftedUtcMs = Date.UTC(year, month - 1, day) + days * 86400000
+  const shifted = new Date(shiftedUtcMs)
+  const yyyy = shifted.getUTCFullYear()
+  const mm = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(shifted.getUTCDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+// preset -> {start, end} (YYYY-MM-DD, bornes incluses, calendrier Europe/Paris,
+// via parisDateFromInstant — aucune logique de fuseau dupliquée). 'custom'
+// retourne null si une des deux bornes manque (jamais de plage à moitié
+// définie) ; bornes inversées silencieusement remises dans l'ordre plutôt que
+// de produire une plage vide surprenante.
+export function resolveDateRange(
+  preset: DateRangePreset,
+  custom: { start: string | null; end: string | null } | null,
+  reference: Date = new Date()
+): ResolvedDateRange | null {
+  const today = parisDateFromInstant(reference.toISOString())
+
+  switch (preset) {
+    case 'today':
+      return { start: today, end: today }
+    case '7d':
+      return { start: addDaysToDateString(today, -6), end: today }
+    case '30d':
+      return { start: addDaysToDateString(today, -29), end: today }
+    case 'month': {
+      const [year, month] = today.split('-')
+      return { start: `${year}-${month}-01`, end: today }
+    }
+    case 'custom': {
+      if (!custom?.start || !custom?.end) return null
+      return custom.start <= custom.end
+        ? { start: custom.start, end: custom.end }
+        : { start: custom.end, end: custom.start }
+    }
+    default:
+      return null
+  }
+}
+
+// Liste chaque date calendaire (YYYY-MM-DD) entre start et end inclus —
+// utilisé pour construire un graphique quotidien continu (jours sans donnée
+// inclus, jamais comblés par une estimation : la valeur associée reste à la
+// charge de l'appelant). Réutilise addDaysToDateString ci-dessus.
+export function enumerateDateRange(start: string, end: string): string[] {
+  const dates: string[] = []
+  let current = start
+  while (current <= end) {
+    dates.push(current)
+    current = addDaysToDateString(current, 1)
+  }
+  return dates
+}

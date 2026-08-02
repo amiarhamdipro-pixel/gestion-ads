@@ -2,11 +2,13 @@
 // Purement présentationnel : toutes les données sont chargées par
 // app/dashboard/layout.tsx, aucune requête ni logique ici.
 
+import { Suspense } from 'react'
 import Image from 'next/image'
 import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
 import { ChevronDownIcon, ClockIcon, CrownIcon, UserIcon } from './icons'
 import SyncMetaButton from './SyncMetaButton'
 import SyncCalendlyButton from './SyncCalendlyButton'
+import DashboardDateFilter from './DashboardDateFilter'
 
 const roleLabel: Record<string, string> = {
   admin: 'Admin',
@@ -103,6 +105,10 @@ export default function Header({
             {isAdmin ? <CrownIcon size={14} /> : <UserIcon size={14} />}
             {role ? (roleLabel[role] ?? role) : '—'}
           </div>
+
+          <Suspense fallback={null}>
+            <DashboardDateFilter />
+          </Suspense>
 
           {isAdmin ? <SyncMetaButton /> : null}
           {isAdmin ? <SyncCalendlyButton /> : null}

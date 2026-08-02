@@ -6,7 +6,7 @@
 // Clients, Utilisateurs, Paramètres, Administration...).
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { logout } from './actions'
 import { accent, ink, line, muted, surface } from './format'
 import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon } from './icons'
@@ -24,6 +24,9 @@ function initials(name: string): string {
 
 export default function Sidebar({ userName, userEmail }: { userName: string; userEmail: string }) {
   const pathname = usePathname()
+  // Préserve le filtre de période actif (DashboardDateFilter) en naviguant
+  // entre les pages : la query string est l'état partagé, aucune duplication.
+  const query = useSearchParams().toString()
 
   return (
     <aside
@@ -74,7 +77,7 @@ export default function Sidebar({ userName, userEmail }: { userName: string; use
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={query ? `${item.href}?${query}` : item.href}
               style={{
                 display: 'flex',
                 alignItems: 'center',

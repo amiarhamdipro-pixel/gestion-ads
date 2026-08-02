@@ -1,12 +1,48 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { realAppointments, realCostPerAppointment } from '@/lib/calculations'
+import {
+  enumerateDateRange,
+  isDateRangePreset,
+  realAppointments,
+  realCostPerAppointment,
+  resolveDateRange,
+} from '@/lib/calculations'
+import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import OverviewSection from './OverviewSection'
+import OverviewDailyChart, { type DailyPoint } from './OverviewDailyChart'
 import KpiCard from './KpiCard'
-import { amber, formatCost, green, indigo, lavender, muted, softBg, violet } from './format'
+import EmptyPeriodState from './EmptyPeriodState'
+import {
+  accent,
+  amber,
+  faint,
+  formatCost,
+  formatEur,
+  formatPeriod,
+  green,
+  indigo,
+  lavender,
+  line,
+  muted,
+  radius,
+  softBg,
+  surface,
+  surfaceAlt,
+  violet,
+} from './format'
 import { CalendarIcon, DollarIcon, SyncIcon, UserIcon } from './icons'
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; from?: string; to?: string }>
+}) {
+  const { period, from, to } = await searchParams
+  const activePreset = isDateRangePreset(period) ? period : null
+  const resolvedRange = activePreset ? resolveDateRange(activePreset, { start: from ?? null, end: to ?? null }) : null
+  const queryString = buildDateRangeQueryString({ period, from, to })
+
   const supabase = await createClient()
 
   const {
@@ -23,6 +59,255 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .maybeSingle()
 
+  const isAdmin = profile?.role === 'admin'
+
+  if (!profile?.client_id) {
+    return (
+      <main style={{ padding: '40px 40px 64px' }}>
+        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+        <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
+        <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>
+      </main>
+    )
+  }
+
+  // ─── Période active : KPI exacts issus de campaign_daily_stats ──────────
+  // (sommes journalières réelles, jamais une estimation depuis les totaux
+  // campagne — voir BRIEF-CLAUDE-CODE.md).
+  if (resolvedRange) {
+    const { data: dailyRowsRaw, error: dailyError } = await supabase
+      .from('campaign_daily_stats')
+      .select('campaign_id, stat_date, meta_spend, meta_pixel_leads, calendly_appointments')
+      .eq('client_id', profile.client_id)
+      .gte('stat_date', resolvedRange.start)
+      .lte('stat_date', resolvedRange.end)
+      .order('stat_date', { ascending: true })
+
+    if (dailyError) {
+      return (
+        <main style={{ padding: '40px 40px 64px' }}>
+          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+          <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
+          <p style={{ marginTop: 20, color: '#D93A3A' }}>Impossible de charger les statistiques journalières. Réessayez plus tard.</p>
+        </main>
+      )
+    }
+
+    const dailyRows = dailyRowsRaw ?? []
+
+    if (dailyRows.length === 0) {
+      return (
+        <main style={{ padding: '40px 40px 64px' }}>
+          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+          <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>
+            {formatPeriod(resolvedRange.start, resolvedRange.end)}
+          </p>
+          <div style={{ marginTop: 24 }}>
+            <EmptyPeriodState />
+          </div>
+        </main>
+      )
+    }
+
+    const byCampaign = new Map<string, { spend: number; leads: number; appointments: number }>()
+    const byDate = new Map<string, { spend: number; appointments: number }>()
+    for (const row of dailyRows) {
+      const c = byCampaign.get(row.campaign_id) ?? { spend: 0, leads: 0, appointments: 0 }
+      c.spend += row.meta_spend
+      c.leads += row.meta_pixel_leads
+      c.appointments += row.calendly_appointments
+      byCampaign.set(row.campaign_id, c)
+
+      const d = byDate.get(row.stat_date) ?? { spend: 0, appointments: 0 }
+      d.spend += row.meta_spend
+      d.appointments += row.calendly_appointments
+      byDate.set(row.stat_date, d)
+    }
+
+    const totalSpend = dailyRows.reduce((sum, r) => sum + r.meta_spend, 0)
+    const totalAppointments = dailyRows.reduce((sum, r) => sum + r.calendly_appointments, 0)
+    const avgRealCostPerAppointment = realCostPerAppointment(totalSpend, totalAppointments)
+
+    const dailyPoints: DailyPoint[] = enumerateDateRange(resolvedRange.start, resolvedRange.end).map((date) => ({
+      date,
+      spend: byDate.get(date)?.spend ?? 0,
+      appointments: byDate.get(date)?.appointments ?? 0,
+    }))
+
+    const { data: campaignMeta } = await supabase
+      .from('campaigns')
+      .select('id, campaign_number')
+      .eq('client_id', profile.client_id)
+      .order('campaign_number', { ascending: true })
+
+    const campaignRows = (campaignMeta ?? [])
+      .filter((c) => byCampaign.has(c.id))
+      .map((c) => {
+        const agg = byCampaign.get(c.id)!
+        return {
+          id: c.id,
+          campaignNumber: c.campaign_number,
+          spend: agg.spend,
+          appointments: agg.appointments,
+          costPerAppt: realCostPerAppointment(agg.spend, agg.appointments),
+        }
+      })
+
+    return (
+      <main style={{ padding: '40px 40px 64px' }}>
+        <style>{`
+          .amerys-card-list { display: none; }
+          @media (max-width: 640px) {
+            .amerys-table-wrap { display: none; }
+            .amerys-card-list { display: flex; }
+          }
+        `}</style>
+
+        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+        <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>{formatPeriod(resolvedRange.start, resolvedRange.end)}</p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 18,
+            margin: '30px 0',
+          }}
+        >
+          <KpiCard
+            icon={<DollarIcon size={20} />}
+            iconColor={indigo}
+            iconBg={lavender}
+            label="Dépensé"
+            value={`${formatEur(totalSpend)} €`}
+            foot="somme des jours de la période"
+          />
+          <KpiCard
+            icon={<CalendarIcon size={20} />}
+            iconColor={violet}
+            iconBg={lavender}
+            label="Rendez-vous"
+            value={String(totalAppointments)}
+            foot="somme des jours de la période"
+          />
+          <KpiCard
+            icon={<UserIcon size={20} />}
+            iconColor={amber}
+            iconBg={softBg(amber, 0.14)}
+            label="Coût / RDV réel"
+            value={formatCost(avgRealCostPerAppointment)}
+          />
+          <KpiCard
+            icon={<SyncIcon size={20} />}
+            iconColor={green}
+            iconBg={softBg(green, 0.14)}
+            label="Campagnes actives"
+            value={String(campaignRows.length)}
+            foot="sur cette période"
+          />
+        </div>
+
+        <div style={{ margin: '0 0 32px' }}>
+          <OverviewDailyChart points={dailyPoints} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes</h2>
+        </div>
+
+        <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+              <thead>
+                <tr>
+                  {['#', 'Campagne', 'Dépensé', 'Rendez-vous', 'Coût / RDV réel'].map((label, i) => (
+                    <th
+                      key={label}
+                      style={{
+                        textAlign: i === 1 ? 'left' : 'right',
+                        padding: '13px 16px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        letterSpacing: '.04em',
+                        textTransform: 'uppercase',
+                        color: faint,
+                        background: surfaceAlt,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {campaignRows.map((row, index) => (
+                  <tr key={row.id} style={{ borderTop: index === 0 ? 'none' : `1px solid ${line}` }}>
+                    <td style={{ padding: '14px 16px', fontSize: 13.5, fontWeight: 700, color: accent, textAlign: 'right' }}>
+                      {row.campaignNumber}
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <Link
+                        href={`/dashboard/campaigns/${row.id}${queryString}`}
+                        style={{ fontWeight: 600, fontSize: 14, color: accent, textDecoration: 'none' }}
+                      >
+                        Campagne {row.campaignNumber}
+                      </Link>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {formatEur(row.spend)} €
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>{row.appointments}</td>
+                    <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {formatCost(row.costPerAppt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="amerys-card-list" style={{ flexDirection: 'column', gap: 12 }}>
+          {campaignRows.map((row) => (
+            <div key={row.id} style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: accent }}>#{row.campaignNumber}</span>
+                <Link
+                  href={`/dashboard/campaigns/${row.id}${queryString}`}
+                  style={{ fontWeight: 600, fontSize: 15, color: accent, textDecoration: 'none' }}
+                >
+                  Campagne {row.campaignNumber}
+                </Link>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    Dépensé
+                  </div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatEur(row.spend)} €</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    Rendez-vous
+                  </div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{row.appointments}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${line}` }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  Coût / RDV réel
+                </div>
+                <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatCost(row.costPerAppt)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    )
+  }
+
+  // ─── Aucune période sélectionnée : vue historique inchangée ─────────────
   let campaigns: {
     id: string
     campaign_number: number
@@ -35,37 +320,35 @@ export default async function DashboardPage() {
   }[] = []
   let campaignsError: string | null = null
 
-  if (profile?.client_id) {
-    const { data, error } = await supabase
-      .from('campaigns')
-      .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
-      .eq('client_id', profile.client_id)
-      .order('campaign_number', { ascending: true })
+  const { data, error } = await supabase
+    .from('campaigns')
+    .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
+    .eq('client_id', profile.client_id)
+    .order('campaign_number', { ascending: true })
 
-    if (error) {
-      campaignsError = error.message
-    } else {
-      const loaded = data ?? []
-      // RDV réels par campagne : comptés directement dans appointments
-      // (status='active', campaign_id rattaché) plutôt que lus depuis
-      // campaigns.calendly_appointments, qui reste à 0 par défaut (jamais
-      // écrit par la synchro, voir BRIEF-CLAUDE-CODE.md section 5).
-      const counts = await Promise.all(
-        loaded.map(async (c) => {
-          const { count, error: countError } = await supabase
-            .from('appointments')
-            .select('id', { count: 'exact', head: true })
-            .eq('client_id', profile.client_id as string)
-            .eq('campaign_id', c.id)
-            .eq('status', 'active')
-          if (countError) {
-            console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
-          }
-          return count ?? 0
-        })
-      )
-      campaigns = loaded.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
-    }
+  if (error) {
+    campaignsError = error.message
+  } else {
+    const loaded = data ?? []
+    // RDV réels par campagne : comptés directement dans appointments
+    // (status='active', campaign_id rattaché) plutôt que lus depuis
+    // campaigns.calendly_appointments, qui reste à 0 par défaut (jamais
+    // écrit par la synchro, voir BRIEF-CLAUDE-CODE.md section 5).
+    const counts = await Promise.all(
+      loaded.map(async (c) => {
+        const { count, error: countError } = await supabase
+          .from('appointments')
+          .select('id', { count: 'exact', head: true })
+          .eq('client_id', profile.client_id as string)
+          .eq('campaign_id', c.id)
+          .eq('status', 'active')
+        if (countError) {
+          console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
+        }
+        return count ?? 0
+      })
+    )
+    campaigns = loaded.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
   }
 
   const totalSpend = campaigns.reduce((sum, c) => sum + c.meta_spend, 0)
@@ -74,16 +357,13 @@ export default async function DashboardPage() {
     0
   )
   const avgRealCostPerAppointment = realCostPerAppointment(totalSpend, totalRealAppointments)
-  const isAdmin = profile?.role === 'admin'
 
   return (
     <main style={{ padding: '40px 40px 64px' }}>
       <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
 
-      {!profile?.client_id ? (
-        <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>
-      ) : campaignsError ? (
+      {campaignsError ? (
         <p style={{ marginTop: 20, color: '#D93A3A' }}>
           Impossible de charger les campagnes pour le moment. Réessayez plus tard.
         </p>

@@ -6,11 +6,15 @@ import {
   costPerMetaPixelLead,
   hookRatePlay,
   hookRateThruplay,
+  isDateRangePreset,
+  parisDateFromInstant,
   realAppointments,
   realCostPerAppointment,
+  resolveDateRange,
   retentionRate,
   trackingGap,
 } from '@/lib/calculations'
+import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import KpiCard from '../../KpiCard'
 import {
   amber,
@@ -67,8 +71,19 @@ function groupByAcquisitionChannel(rawChannels: (string | null)[]): ChannelBreak
     .sort((a, b) => b.count - a.count)
 }
 
-export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CampaignDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ period?: string; from?: string; to?: string }>
+}) {
   const { id } = await params
+  const { period, from, to } = await searchParams
+  const activePreset = isDateRangePreset(period) ? period : null
+  const resolvedRange = activePreset ? resolveDateRange(activePreset, { start: from ?? null, end: to ?? null }) : null
+  const queryString = buildDateRangeQueryString({ period, from, to })
+
   const supabase = await createClient()
 
   const {
@@ -103,10 +118,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   // RDV réels rattachés à cette campagne : lus directement dans appointments
   // (status='active'), pas depuis campaigns.calendly_appointments qui reste
   // à 0 par défaut (jamais écrit par la synchro). Une seule requête sert à
-  // la fois le total (KPI) et la répartition par canal ci-dessous.
+  // la fois le total (KPI, hors période) et la répartition par canal
+  // ci-dessous (start_time sert au filtrage par période, Europe/Paris).
   const { data: activeAppointmentRows, error: appointmentsError } = await supabase
     .from('appointments')
-    .select('acquisition_channel')
+    .select('acquisition_channel, start_time')
     .eq('client_id', profile.client_id)
     .eq('campaign_id', campaign.id)
     .eq('status', 'active')
@@ -116,10 +132,19 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   }
 
   const activeAppointments = activeAppointmentRows ?? []
-  const channelBreakdown = groupByAcquisitionChannel(activeAppointments.map((a) => a.acquisition_channel))
-  const realAppointmentsCount = realAppointments(activeAppointments.length, campaign.manual_appointments_adjustment)
-  const realCostPerAppt = realCostPerAppointment(campaign.meta_spend, realAppointmentsCount)
-  const trackingGapValue = trackingGap(realAppointmentsCount, campaign.meta_pixel_leads)
+
+  // Période active : la répartition par canal ne porte que sur les
+  // rendez-vous dont la date métier (Europe/Paris) tombe dans la période —
+  // cohérent avec le KPI "RDV confirmés" ci-dessous, lui-même basé sur
+  // campaign_daily_stats.
+  const channelSourceAppointments = resolvedRange
+    ? activeAppointments.filter((a) => {
+        const statDate = parisDateFromInstant(a.start_time)
+        return statDate >= resolvedRange.start && statDate <= resolvedRange.end
+      })
+    : activeAppointments
+
+  const channelBreakdown = groupByAcquisitionChannel(channelSourceAppointments.map((a) => a.acquisition_channel))
 
   const { data: audiences } = await supabase
     .from('audiences')
@@ -140,7 +165,38 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       : { data: [] }
 
   const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
-  const costPerLead = costPerMetaPixelLead(campaign.meta_spend, campaign.meta_pixel_leads)
+
+  // ─── KPI : période active (sommes exactes campaign_daily_stats) ou totaux
+  // campagne (comportement historique inchangé si aucune période active) ───
+  let realAppointmentsCount: number
+  let spendForKpis: number
+  let metaPixelLeadsForKpis: number
+
+  if (resolvedRange) {
+    const { data: dailyRows } = await supabase
+      .from('campaign_daily_stats')
+      .select('meta_spend, meta_pixel_leads, calendly_appointments')
+      .eq('campaign_id', campaign.id)
+      .gte('stat_date', resolvedRange.start)
+      .lte('stat_date', resolvedRange.end)
+
+    const rows = dailyRows ?? []
+    spendForKpis = rows.reduce((sum, r) => sum + r.meta_spend, 0)
+    metaPixelLeadsForKpis = rows.reduce((sum, r) => sum + r.meta_pixel_leads, 0)
+    // Pas d'ajustement manuel ici : manual_appointments_adjustment est une
+    // correction globale à la campagne, sans date associée — l'appliquer à
+    // une période reviendrait à estimer une répartition inexistante
+    // (interdit, voir BRIEF-CLAUDE-CODE.md).
+    realAppointmentsCount = rows.reduce((sum, r) => sum + r.calendly_appointments, 0)
+  } else {
+    spendForKpis = campaign.meta_spend
+    metaPixelLeadsForKpis = campaign.meta_pixel_leads
+    realAppointmentsCount = realAppointments(activeAppointments.length, campaign.manual_appointments_adjustment)
+  }
+
+  const realCostPerAppt = realCostPerAppointment(spendForKpis, realAppointmentsCount)
+  const trackingGapValue = trackingGap(realAppointmentsCount, metaPixelLeadsForKpis)
+  const costPerLead = costPerMetaPixelLead(spendForKpis, metaPixelLeadsForKpis)
 
   return (
     <main style={{ padding: '40px 40px 64px', color: ink }}>
@@ -153,7 +209,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
         <Link
-          href="/dashboard"
+          href={`/dashboard${queryString}`}
           style={{
             border: `1px solid ${line}`,
             background: surface,
@@ -193,8 +249,10 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         ) : null}
       </div>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 4 }}>
-        {formatPeriod(campaign.start_date, campaign.end_date)}
-        {duration !== null ? ` · ${duration} jour${duration > 1 ? 's' : ''}` : ''}
+        {resolvedRange
+          ? formatPeriod(resolvedRange.start, resolvedRange.end)
+          : formatPeriod(campaign.start_date, campaign.end_date)}
+        {!resolvedRange && duration !== null ? ` · ${duration} jour${duration > 1 ? 's' : ''}` : ''}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18, margin: '30px 0' }}>
@@ -203,7 +261,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           iconColor={indigo}
           iconBg={lavender}
           label="Budget dépensé"
-          value={`${formatEur(campaign.meta_spend)} €`}
+          value={`${formatEur(spendForKpis)} €`}
         />
         <KpiCard
           icon={<CalendarIcon size={20} />}
@@ -227,14 +285,14 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           iconBg={softBg(green, 0.14)}
           label="Durée"
           value={duration !== null ? `${duration} j` : '—'}
-          foot={duration === null ? 'non disponible' : undefined}
+          foot={duration === null ? 'non disponible' : 'campagne entière'}
         />
         <KpiCard
           icon={<TrendingUpIcon size={20} />}
           iconColor={gray}
           iconBg={softBg(gray, 0.12)}
           label="Leads Meta"
-          value={String(campaign.meta_pixel_leads)}
+          value={String(metaPixelLeadsForKpis)}
           foot="conversions pixel"
         />
         <KpiCard
@@ -305,7 +363,18 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       )}
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Barbier vs Coiffeur</h2>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+          Barbier vs Coiffeur
+          {resolvedRange ? (
+            <span style={{ fontWeight: 600, fontSize: 12.5, color: faint, marginLeft: 8 }}>(total campagne)</span>
+          ) : null}
+        </h2>
+        {resolvedRange ? (
+          <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
+            Pas de détail journalier par audience/vidéo — ces chiffres portent sur toute la durée de la campagne,
+            pas sur la période sélectionnée.
+          </p>
+        ) : null}
       </div>
 
       {(audiences ?? []).length === 0 ? (
