@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { syncAllCampaigns } from '@/lib/sync/syncAllCampaigns'
+import { syncAllCampaignsDailyStats } from '@/lib/sync/syncAllCampaignsDailyStats'
 
 export async function POST() {
   const supabase = await createClient()
@@ -33,31 +34,72 @@ export async function POST() {
     return NextResponse.json({ error: 'Synchronisation indisponible (configuration serveur).' }, { status: 500 })
   }
 
-  try {
-    const report = await syncAllCampaigns({
-      clientId: profile.client_id,
-      metaCampaignId,
-      leadActionType: process.env.LEAD_ACTION_TYPE,
-    })
+  const syncParams = {
+    clientId: profile.client_id,
+    metaCampaignId,
+    leadActionType: process.env.LEAD_ACTION_TYPE,
+  }
 
-    return NextResponse.json({
-      totalDetected: report.totalDetected,
-      succeeded: report.succeeded,
-      failed: report.failed,
-      invalid: report.invalid,
-      details: report.details.map((detail) =>
+  let totalsReport
+  try {
+    totalsReport = await syncAllCampaigns(syncParams)
+  } catch (error) {
+    console.error('Échec /api/admin/sync (totaux) :', error instanceof Error ? error.message : 'erreur inconnue')
+    return NextResponse.json({ error: 'Échec de la synchronisation des totaux.' }, { status: 500 })
+  }
+
+  const totals = {
+    totalDetected: totalsReport.totalDetected,
+    succeeded: totalsReport.succeeded,
+    failed: totalsReport.failed,
+    invalid: totalsReport.invalid,
+    details: totalsReport.details.map((detail) =>
+      detail.status === 'success'
+        ? {
+            campaignNumber: detail.campaignNumber,
+            status: 'success' as const,
+            campaign: { id: detail.result.campaign.id, name: detail.result.campaign.name },
+            counts: { audiences: detail.result.audiences.length, videos: detail.result.videos.length },
+          }
+        : { campaignNumber: detail.campaignNumber, status: 'failed' as const, message: detail.message }
+    ),
+  }
+
+  // La synchro quotidienne n'est lancée qu'une fois la synchro des totaux
+  // terminée (succès ou échecs partiels déjà journalisés ci-dessus) — jamais
+  // en parallèle. Si elle échoue de façon inattendue (ex. la découverte des
+  // campagnes échoue), les totaux déjà synchronisés restent acquis et
+  // l'échec du volet quotidien est renvoyé explicitement, jamais masqué.
+  try {
+    const dailyReport = await syncAllCampaignsDailyStats(syncParams)
+
+    const daily = {
+      totalDetected: dailyReport.totalDetected,
+      succeeded: dailyReport.succeeded,
+      failed: dailyReport.failed,
+      stoppedOnRateLimit: dailyReport.stoppedOnRateLimit,
+      invalid: dailyReport.invalid,
+      daysUpserted: dailyReport.details.reduce(
+        (sum, detail) => sum + (detail.status === 'success' ? detail.result.daysUpserted : 0),
+        0
+      ),
+      details: dailyReport.details.map((detail) =>
         detail.status === 'success'
           ? {
               campaignNumber: detail.campaignNumber,
               status: 'success' as const,
-              campaign: { id: detail.result.campaign.id, name: detail.result.campaign.name },
-              counts: { audiences: detail.result.audiences.length, videos: detail.result.videos.length },
+              daysUpserted: detail.result.daysUpserted,
             }
           : { campaignNumber: detail.campaignNumber, status: 'failed' as const, message: detail.message }
       ),
-    })
+    }
+
+    return NextResponse.json({ totals, daily })
   } catch (error) {
-    console.error('Échec /api/admin/sync :', error instanceof Error ? error.message : 'erreur inconnue')
-    return NextResponse.json({ error: 'Échec de la synchronisation.' }, { status: 500 })
+    console.error('Échec /api/admin/sync (quotidien) :', error instanceof Error ? error.message : 'erreur inconnue')
+    return NextResponse.json({
+      totals,
+      daily: { error: 'Échec de la synchronisation quotidienne.' },
+    })
   }
 }

@@ -4,18 +4,47 @@ import { useState } from 'react'
 import { accent, onDark, onDarkMuted } from './format'
 import { SyncIcon } from './icons'
 
-type SyncReport = {
+type TotalsReport = {
   totalDetected: number
   succeeded: number
   failed: number
   invalid: { campaignNumber: number; reason: string }[]
 }
 
+type DailyReport =
+  | {
+      totalDetected: number
+      succeeded: number
+      failed: number
+      stoppedOnRateLimit: boolean
+      daysUpserted: number
+      invalid: { campaignNumber: number; reason: string }[]
+    }
+  | { error: string }
+
+type SyncReport = { totals: TotalsReport; daily: DailyReport }
+
 type SyncState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'success'; report: SyncReport }
   | { status: 'error'; message: string }
+
+function summarizeTotals(totals: TotalsReport): string {
+  return (
+    `Totaux : ${totals.succeeded} campagne${totals.succeeded > 1 ? 's' : ''} synchronisée${totals.succeeded > 1 ? 's' : ''}` +
+    (totals.failed > 0 ? ` · ${totals.failed} échec${totals.failed > 1 ? 's' : ''}` : '')
+  )
+}
+
+function summarizeDaily(daily: DailyReport): string {
+  if ('error' in daily) return 'Quotidien : échec'
+  return (
+    `Quotidien : ${daily.daysUpserted} jour${daily.daysUpserted > 1 ? 's' : ''} mis à jour` +
+    (daily.failed > 0 ? ` · ${daily.failed} échec${daily.failed > 1 ? 's' : ''}` : '') +
+    (daily.stoppedOnRateLimit ? ' · limite Meta atteinte' : '')
+  )
+}
 
 export default function SyncMetaButton() {
   const [state, setState] = useState<SyncState>({ status: 'idle' })
@@ -76,11 +105,12 @@ export default function SyncMetaButton() {
             fontSize: 11.5,
             color: onDarkMuted,
             whiteSpace: 'nowrap',
+            textAlign: 'right',
           }}
         >
-          {state.report.succeeded} campagne{state.report.succeeded > 1 ? 's' : ''} synchronisée
-          {state.report.succeeded > 1 ? 's' : ''}
-          {state.report.failed > 0 ? ` · ${state.report.failed} échec${state.report.failed > 1 ? 's' : ''}` : ''}
+          {summarizeTotals(state.report.totals)}
+          <br />
+          {summarizeDaily(state.report.daily)}
         </p>
       ) : null}
       {state.status === 'error' ? (

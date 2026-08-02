@@ -335,6 +335,32 @@ code a changé depuis) :
   présents ; lien Comparaison de la Sidebar conserve le filtre ;
   `?period=today` (aucune donnée) affiche l'état vide sans grille KPI ;
   restauration complète des données de test confirmée.
+- **Bouton admin « Synchroniser » chaîné : totaux Meta puis quotidien Meta,
+  en un seul clic** (`app/api/admin/sync/route.ts`) : `syncAllCampaigns`
+  (totaux campagnes/audiences/vidéos) est `await`é en premier ; seulement
+  s'il se termine (succès ou échecs par campagne déjà journalisés
+  individuellement) `syncAllCampaignsDailyStats` est lancé ensuite — jamais
+  en parallèle, jamais si `syncAllCampaigns` lève une exception (dans ce cas
+  la réponse est un échec explicite unique et le quotidien n'est pas
+  tenté). La réponse JSON expose deux rapports strictement séparés,
+  `totals` et `daily` (compteurs détectées/succès/échecs/invalides propres à
+  chacun, plus `daysUpserted` et `stoppedOnRateLimit` côté `daily`) ; si le
+  volet quotidien échoue de façon inattendue après des totaux déjà réussis,
+  la réponse renvoie `{ totals, daily: { error } }` — les totaux acquis ne
+  sont jamais perdus ni l'échec masqué. `SyncMetaButton.tsx` affiche un
+  résumé court des deux étapes (deux lignes : totaux puis quotidien, avec le
+  nombre de jours mis à jour et une mention explicite si la limite Meta a
+  été atteinte). Aucun changement Calendly, schéma, migration ou calcul ;
+  toujours lecture seule côté Meta. Validé par un clic réel unique
+  (`fetch()` authentifié, un seul `POST`) : 9 campagnes détectées, 9/9
+  synchronisées côté totaux, volet quotidien ayant réellement atteint la
+  limite de débit Meta (code 17) après 1 campagne — comportement observé en
+  conditions réelles, pas simulé : `succeeded=1`, `failed=1`,
+  `stoppedOnRateLimit=true`, totaux intacts, échec partiel renvoyé
+  explicitement sans être masqué ; 15 lignes `campaign_daily_stats`
+  fraîchement écrites par ce même appel (filtre de période nourri) ; 9
+  nouvelles lignes `sync_runs` (exactement une par campagne totaux, aucune
+  double exécution).
 
 ## 6. Tâche immédiate
 
