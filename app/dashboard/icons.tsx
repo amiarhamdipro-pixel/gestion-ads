@@ -157,3 +157,45 @@ export function LogoutIcon(props: IconProps) {
     props
   )
 }
+
+export function MailIcon(props: IconProps) {
+  return base(
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2.2" />
+      <path d="m4 7 8 6 8-6" />
+    </>,
+    props
+  )
+}
+
+export function LockIcon(props: IconProps) {
+  return base(
+    <>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2.2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </>,
+    props
+  )
+}
+
+export function EyeIcon(props: IconProps) {
+  return base(
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>,
+    props
+  )
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return base(
+    <>
+      <path d="M6.5 6.9C4 8.6 2.5 12 2.5 12S6 18.5 12 18.5c1.2 0 2.3-.2 3.3-.6" />
+      <path d="M10.6 5.7A10.6 10.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15.6 15.6 0 0 1-3.2 4" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="M3 3l18 18" />
+    </>,
+    props
+  )
+}
