@@ -7,15 +7,33 @@
 // Limite connue : supabase-js n'expose pas de transaction multi-requêtes côté
 // client JS. Une atomicité DB stricte nécessiterait une fonction SQL (RPC)
 // dédiée — hors périmètre ici. Les champs de saisie manuelle
-// (calendly_appointments, manual_appointments_adjustment, end_date) ne sont
-// jamais écrasés par cette fonction : ils sont omis du payload d'upsert
-// campagne. Meta ne renvoie jamais de end_time/stop_time fiable sur les ad
-// sets de ce compte (vérifié) ; end_date reste donc une saisie admin exclusive
-// (voir app/api/admin/campaigns/end-date/route.ts).
+// (calendly_appointments, manual_appointments_adjustment) ne sont jamais
+// écrasés par cette fonction : ils sont omis du payload d'upsert campagne.
+//
+// end_date : l'attribut end_time de l'ad set lui-même n'est JAMAIS renvoyé
+// par Meta sur ce compte (vérifié en conditions réelles, 9/9 campagnes,
+// paused et active confondues — ce n'est pas une date programmée que les
+// opérateurs renseignent, seul un statut PAUSED est utilisé pour arrêter une
+// campagne). date_stop des insights agrégées (date_preset=maximum) ne
+// convient pas non plus : il vaut toujours la date du jour, quel que soit le
+// statut réel de l'ad set (vérifié également) — l'utiliser écrirait une date
+// "aujourd'hui" à chaque resync, explicitement interdit. La seule donnée
+// Meta fiable pour une date de fin réelle est le DERNIER date_start
+// effectivement renvoyé par les insights quotidiennes (time_increment=1,
+// déjà utilisées par syncCampaignDailyStats.ts) : Meta ne renvoie jamais de
+// jour sans diffusion réelle, donc le dernier jour reçu est le dernier jour
+// où l'ad set a réellement délivré. Calculée uniquement quand les deux ad
+// sets (barbier + coiffeur) ne sont plus ACTIVE (jamais sur une campagne en
+// cours) et seulement si end_date n'est pas déjà renseignée (évite de
+// refaire l'appel Meta à chaque resync une fois la date figée — coûteux et
+// sensible à la limite de débit). Si aucune donnée quotidienne n'existe
+// (campagne arrêtée sans avoir jamais délivré), end_date reste omise du
+// payload : la saisie manuelle (app/api/admin/campaigns/end-date/route.ts)
+// redevient alors un vrai secours, jamais écrasée dans ce cas précis.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logError } from '@/lib/logger'
-import { fetchAdInsights, fetchAdSetAds, fetchAdSetInsights, fetchCampaignAdSets } from './meta'
+import { fetchAdInsights, fetchAdSetAds, fetchAdSetDailyInsights, fetchAdSetInsights, fetchCampaignAdSets } from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
 import { mapAdSetToAudienceInsert, mapAdToVideoInsert } from './mapper'
 import type { SyncCampaignParams, SyncCampaignResult } from './types'
@@ -126,6 +144,28 @@ async function runSync(
   const barbierStart = toDateOnly(barbierAdSet.start_time)
   const coiffeurStart = toDateOnly(coiffeurAdSet.start_time)
 
+  const bothEnded = barbierAdSet.status !== 'ACTIVE' && coiffeurAdSet.status !== 'ACTIVE'
+  let derivedEndDate: string | null = null
+
+  if (bothEnded) {
+    const { data: existingCampaign } = await supabase
+      .from('campaigns')
+      .select('end_date')
+      .eq('client_id', clientId)
+      .eq('campaign_number', campaignNumber)
+      .maybeSingle()
+
+    if (!existingCampaign?.end_date) {
+      const [barbierDaily, coiffeurDaily] = await Promise.all([
+        fetchAdSetDailyInsights(barbierAdSet.id),
+        fetchAdSetDailyInsights(coiffeurAdSet.id),
+      ])
+      const lastRealDates = [...barbierDaily, ...coiffeurDaily].map((d) => d.date_start)
+      derivedEndDate =
+        lastRealDates.length > 0 ? lastRealDates.reduce((max, d) => (d > max ? d : max)) : null
+    }
+  }
+
   const { data: campaign, error: campaignError } = await supabase
     .from('campaigns')
     .upsert(
@@ -138,6 +178,7 @@ async function runSync(
         start_date: earliestDate(barbierStart, coiffeurStart),
         meta_spend: barbierAudienceData.meta_spend + coiffeurAudienceData.meta_spend,
         meta_pixel_leads: barbierAudienceData.meta_pixel_leads + coiffeurAudienceData.meta_pixel_leads,
+        ...(derivedEndDate !== null ? { end_date: derivedEndDate } : {}),
       },
       { onConflict: 'client_id,campaign_number' }
     )

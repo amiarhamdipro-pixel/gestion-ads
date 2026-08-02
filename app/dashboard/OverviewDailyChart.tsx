@@ -1,9 +1,10 @@
 // Graphe combiné rendez-vous réels (barres) / montant dépensé (courbe), par
 // jour de la période sélectionnée — pendant du OverviewChart.tsx (X = numéro
 // de campagne) mais X = date calendaire, pour le filtre de période
-// (DashboardDateFilter). Même langage visuel (couleurs, mini-légende
-// dépensé), pas de bascule Totaux/Par jour : la vue est toujours quotidienne
-// ici, par construction. SVG fait main (pas de dépendance graphique).
+// (DashboardDateFilter). Même langage visuel (couleurs, double axe,
+// légende) et pas de bascule Totaux/Par jour : la vue est toujours
+// quotidienne ici, par construction. SVG fait main (pas de dépendance
+// graphique).
 
 import { faint, indigo, ink, line as lineColor, muted, surface, violet } from './format'
 import { InfoIcon } from './icons'
@@ -19,6 +20,18 @@ function barPath(x: number, width: number, top: number, bottom: number, radius: 
 function shortDayLabel(isoDate: string): string {
   const [, month, day] = isoDate.split('-')
   return `${day}/${month}`
+}
+
+// Arrondit un maximum brut à un pas "rond" (1/2/5 × 10^n) pour des
+// graduations d'axe lisibles — voir OverviewChart.tsx (même logique,
+// dupliquée à dessein : composants SVG autonomes, pas de module partagé).
+function niceAxisStep(rawMax: number): number {
+  if (rawMax <= 0) return 1
+  const roughStep = rawMax / 4
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)))
+  const residual = roughStep / magnitude
+  const niceResidual = residual > 5 ? 10 : residual > 2 ? 5 : residual > 1 ? 2 : 1
+  return niceResidual * magnitude
 }
 
 export default function OverviewDailyChart({ points }: { points: DailyPoint[] }) {
@@ -40,32 +53,33 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
     )
   }
 
-  const hasAppointments = points.some((p) => p.appointments > 0)
-
   const width = 640
-  const height = 250
-  const marginLeft = 36
-  const marginRight = 42
+  const height = 268
+  const marginLeft = 50
+  const marginRight = 40
   const marginTop = 14
   const marginBottom = 26
   const plotWidth = width - marginLeft - marginRight
   const plotHeight = height - marginTop - marginBottom
   const baseline = marginTop + plotHeight
 
-  const maxAppointments = Math.max(1, ...points.map((p) => p.appointments))
-  const maxSpend = Math.max(1, ...points.map((p) => p.spend))
+  const spendStep = niceAxisStep(Math.max(1, ...points.map((p) => p.spend)))
+  const spendAxisMax = spendStep * 4
+  const apptStep = niceAxisStep(Math.max(1, ...points.map((p) => p.appointments)))
+  const apptAxisMax = apptStep * 4
 
   const slot = plotWidth / points.length
   const barWidth = Math.min(22, slot * 0.44)
 
-  const yForAppointments = (appointments: number) => baseline - (appointments / maxAppointments) * plotHeight
-  const yForSpend = (spend: number) => baseline - (spend / maxSpend) * plotHeight
+  const yForAppointments = (appointments: number) => baseline - (appointments / apptAxisMax) * plotHeight
+  const yForSpend = (spend: number) => baseline - (spend / spendAxisMax) * plotHeight
   const xCenter = (index: number) => marginLeft + slot * index + slot / 2
 
   const linePoints = points.map((p, i) => `${xCenter(i)},${yForSpend(p.spend)}`).join(' ')
   const fmtSpend = (n: number) => n.toFixed(2).replace('.', ',')
   const fmtSpendAxis = (n: number) => Math.round(n).toLocaleString('fr-FR')
   const fmtAppointments = (n: number) => Math.round(n).toLocaleString('fr-FR')
+  const axisLevels = [0, 1, 2, 3, 4]
 
   // Un point tous les N jours pour l'axe X, afin de ne jamais superposer les
   // libellés sur une période longue (ex. 30 derniers jours) — la donnée reste
@@ -87,50 +101,47 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
           </svg>
           Dépensé (€)
         </span>
-        {hasAppointments ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <i style={{ width: 11, height: 11, borderRadius: 3.5, background: violet, display: 'inline-block' }} />
-            Rendez-vous
-          </span>
-        ) : (
-          <span style={{ fontSize: 12, color: faint }}>Aucun rendez-vous sur cette période</span>
-        )}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <i style={{ width: 11, height: 11, borderRadius: 3.5, background: violet, display: 'inline-block' }} />
+          Rendez-vous
+        </span>
       </div>
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
         style={{ width: '100%', height: 'auto', display: 'block' }}
         role="img"
-        aria-label={hasAppointments ? 'Rendez-vous et dépensé par jour' : 'Dépensé par jour — aucun rendez-vous sur cette période'}
+        aria-label="Rendez-vous et dépensé par jour"
       >
         <style>{`
           .ovd-bar, .ovd-dot { transition: opacity .15s ease; }
           .ovd-bar:hover, .ovd-dot:hover { opacity: .72; }
         `}</style>
 
-        {[0, 0.5, 1].map((t) => (
-          <line
-            key={t}
-            x1={marginLeft}
-            x2={width - marginRight}
-            y1={marginTop + plotHeight * (1 - t)}
-            y2={marginTop + plotHeight * (1 - t)}
-            stroke={lineColor}
-            strokeWidth={1}
-          />
-        ))}
+        {axisLevels.map((lvl) => {
+          const y = marginTop + plotHeight * (1 - lvl / 4)
+          return (
+            <g key={lvl}>
+              <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
+              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={faint}>
+                {fmtSpendAxis(spendStep * lvl)} €
+              </text>
+              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={faint}>
+                {fmtAppointments(apptStep * lvl)}
+              </text>
+            </g>
+          )
+        })}
 
-        {hasAppointments
-          ? points.map((p, i) => {
-              const top = yForAppointments(p.appointments)
-              const x = xCenter(i) - barWidth / 2
-              return (
-                <path key={p.date} className="ovd-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
-                  <title>{`${p.date} — ${fmtAppointments(p.appointments)} rendez-vous`}</title>
-                </path>
-              )
-            })
-          : null}
+        {points.map((p, i) => {
+          const top = yForAppointments(p.appointments)
+          const x = xCenter(i) - barWidth / 2
+          return (
+            <path key={p.date} className="ovd-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
+              <title>{`${p.date} — ${fmtAppointments(p.appointments)} rendez-vous`}</title>
+            </path>
+          )
+        })}
 
         <polyline points={linePoints} fill="none" stroke={indigo} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
@@ -146,15 +157,6 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
             </text>
           ) : null
         )}
-
-        {hasAppointments ? (
-          <text x={marginLeft} y={marginTop - 3} fontSize={10} fill={faint}>
-            {fmtAppointments(maxAppointments)} RDV
-          </text>
-        ) : null}
-        <text x={width - marginRight} y={marginTop - 3} fontSize={10} fill={faint} textAnchor="end">
-          {fmtSpendAxis(maxSpend)} €
-        </text>
       </svg>
     </div>
   )

@@ -492,6 +492,68 @@ code a changé depuis) :
     configurer `NEXT_PUBLIC_SITE_URL` et les *Redirect URLs* Supabase Auth
     en production pour que le lien de réinitialisation fonctionne
     réellement (voir README.md, section Déploiement).
+- **Corrections UX/UI suite à la recette du compte client (MAQUETTE-UI.png
+  fait foi ; MAQUETTE-UI.png ne couvre que l'écran Vue d'ensemble — aucune
+  image de référence pour Détail campagne)** :
+  - **Header** : « Dernière synchro Meta »/« Dernière modification Calendly »
+    admin uniquement (`isAdmin`) ; chevron trompeur retiré à côté du nom
+    client (aucun sélecteur multi-client réel) pour les deux rôles.
+  - **KPI Vue d'ensemble** : carte « Campagnes synchronisées »/« Campagnes
+    actives » (indicateur technique) retirée, sans remplacement — la
+    maquette montre un 4ᵉ KPI « Tracking Meta » à cet emplacement, non
+    ajouté : `écart de tracking` est une donnée admin-only déjà établie
+    (« client voit tout sauf les indicateurs techniques », section 1) et son
+    équivalent en % n'est défini nulle part — l'ajouter aurait exigé
+    d'inventer une formule (hors périmètre : aucune nouvelle fonctionnalité).
+  - **`OverviewChart.tsx`/`OverviewDailyChart.tsx`** : double axe restauré
+    (gauche = Dépensé €, droite = RDV — ordre réel de la maquette, l'énoncé
+    de la tâche les inversait), 5 graduations lisibles par axe (pas de
+    10/20/50 arrondis, jamais la valeur brute), légende toujours complète
+    (avant : masquée si RDV=0), durée ajoutée sous chaque numéro de
+    campagne. Indexation par campagne (pas par date) volontairement
+    conservée — déjà justifiée dans une tâche antérieure, ce n'est pas la
+    logique métier de l'app.
+  - **RDV=0 (bug critique signalé) : cause réelle identifiée, aucun code
+    fautif.** Les 9 campagnes ont `end_date = null` ; `syncAppointments()`
+    exclut par construction toute campagne sans `end_date` du rattachement
+    (`campaignsMatchingAppointment`, comportement documenté, pas un bug) :
+    aucun rendez-vous ne peut donc recevoir de `campaign_id`, d'où
+    `campaign_daily_stats.calendly_appointments = 0` partout, en cascade
+    honnête (graphique, canal d'acquisition, KPI). Toute la chaîne
+    (`appointments`, `campaign_daily_stats`, sync Calendly, mapping,
+    agrégation, filtre période) vérifiée correcte. Décision explicite :
+    l'utilisateur saisira lui-même les dates de fin via `EndDateEditor`
+    (déjà fonctionnel) plutôt qu'une correction automatique de données de
+    production.
+  - **Détail campagne — canal d'acquisition** : donnée réelle confirmée
+    (`acquisition_channel` peuplé sur 1088 rendez-vous actifs, 9 canaux
+    distincts) malgré l'absence de `campaign_id` (même cause que ci-dessus) —
+    bloc conservé, transformé en donut + liste (fusionne l'ancien tableau et
+    le « bloc plateforme » demandé, qui aurait sinon dupliqué la même
+    donnée). Le donut ne montre jamais un Facebook/Instagram binaire
+    inventé : les vrais canaux observés (Google, Facebook, Instagram,
+    Tiktok, MCB...) sont tous représentés. Une ligne « Ajustement manuel »
+    apparaît si `manual_appointments_adjustment ≠ 0` (jamais aujourd'hui)
+    pour que le total reste strictement égal au KPI « RDV confirmés ».
+  - **Bloc « tranche d'âge » non reconstruit** : `appointment_breakdowns`
+    (colonnes `age_18_24`...`age_55_plus`) existe dans le schéma initial
+    mais n'est lue ni écrite nulle part dans le code — confirmé par
+    recherche exhaustive. Calendly ne collecte aucune donnée d'âge (formulaire
+    réel vérifié en Phase 0) : la donnée n'existe pas et ne peut pas être
+    inventée. Aucun placeholder ajouté (pas une donnée manquante
+    temporaire, une absence permanente de source).
+  - **Barbier vs Coiffeur** : bannière vidéo ajoutée (fond sombre, icône
+    Play décorative — jamais de lecture vidéo réelle, aucune URL vidéo
+    stockée —, badge « X vues » réel, badge « Meilleur coût/lead » sur la
+    comparaison réelle entre les deux audiences), nom de la vidéo en
+    overlay. Miniature réelle impossible sans modification de schéma
+    (aucune colonne d'image vidéo) : hors périmètre, non ajoutée. Toutes les
+    métriques métier existantes conservées (Dépensé, Leads Meta, Coût/lead,
+    Impressions, Plays, ThruPlays, Accroche play/thruplay, Rétention).
+  - Validé en conditions réelles (comptes de test jetables) : header/KPI par
+    rôle, graphique sans régression (aucun NaN/Infinity), état vide honnête
+    du canal d'acquisition, bannière vidéo + badge meilleur coût/lead
+    présents, aucune régression admin (sync, écart de tracking).
 
 ## 6. Tâche immédiate
 

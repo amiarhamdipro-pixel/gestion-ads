@@ -25,18 +25,22 @@ import {
   formatPeriod,
   gray,
   green,
+  headerBg,
   indigo,
   ink,
   lavender,
   line,
   muted,
+  onDark,
+  onDarkMuted,
   radius,
+  red,
   softBg,
   surface,
   surfaceAlt,
   violet,
 } from '../../format'
-import { CalendarIcon, ClockIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
+import { CalendarIcon, ClockIcon, DollarIcon, PlayIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
 
 function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
@@ -70,6 +74,29 @@ function groupByAcquisitionChannel(rawChannels: (string | null)[]): ChannelBreak
   return Array.from(groups.values())
     .map(({ label, count }) => ({ channel: label, count, ratio: count / total }))
     .sort((a, b) => b.count - a.count)
+}
+
+// Couleurs des segments du donut « Rendez-vous par canal », ordre fixe
+// (jamais réattribué si un canal disparaît/apparaît d'une page à l'autre),
+// toutes déjà présentes dans la palette — aucune teinte inventée.
+const CHANNEL_COLORS = [indigo, violet, amber, green, red, gray]
+
+type DonutSegment = { color: string; dasharray: string; dashoffset: number }
+
+function donutSegments(rows: ChannelBreakdown[], donutTotal: number, radiusPx: number): DonutSegment[] {
+  const circumference = 2 * Math.PI * radiusPx
+  let cumulative = 0
+  return rows.map((row, i) => {
+    const fraction = donutTotal > 0 ? row.count / donutTotal : 0
+    const dash = fraction * circumference
+    const segment: DonutSegment = {
+      color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+      dasharray: `${dash} ${Math.max(0, circumference - dash)}`,
+      dashoffset: -cumulative,
+    }
+    cumulative += dash
+    return segment
+  })
 }
 
 export default async function CampaignDetailPage({
@@ -146,6 +173,16 @@ export default async function CampaignDetailPage({
     : activeAppointments
 
   const channelBreakdown = groupByAcquisitionChannel(channelSourceAppointments.map((a) => a.acquisition_channel))
+
+  // manual_appointments_adjustment est un correctif global à la campagne,
+  // sans date ni canal associés — jamais appliqué à une période (même règle
+  // qu'ailleurs, voir BRIEF-CLAUDE-CODE.md). Uniquement pertinent hors
+  // période, où le KPI "RDV confirmés" l'inclut : affiché comme ligne à part
+  // (jamais fondu dans un canal réel) pour que la somme du détail reste
+  // strictement égale au KPI.
+  const manualAdjustmentForBreakdown = resolvedRange ? 0 : campaign.manual_appointments_adjustment
+  const channelTotal = channelBreakdown.reduce((sum, row) => sum + row.count, 0)
+  const breakdownGrandTotal = channelTotal + manualAdjustmentForBreakdown
 
   const { data: audiences } = await supabase
     .from('audiences')
@@ -320,46 +357,88 @@ export default async function CampaignDetailPage({
         <h2 style={{ fontWeight: 700, fontSize: 17 }}>Rendez-vous par canal d&apos;acquisition</h2>
       </div>
 
-      {channelBreakdown.length === 0 ? (
-        <p style={{ color: muted }}>Aucun rendez-vous confirmé pour cette campagne.</p>
+      {breakdownGrandTotal === 0 ? (
+        <p style={{ color: muted }}>
+          Aucun rendez-vous confirmé pour cette campagne{resolvedRange ? ' sur cette période' : ''}.
+        </p>
       ) : (
-        <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1.4fr 1fr 1fr',
-              gap: 14,
-              padding: '13px 16px',
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '.04em',
-              textTransform: 'uppercase',
-              color: faint,
-              background: surfaceAlt,
-              borderBottom: `1px solid ${line}`,
-            }}
-          >
-            <span>Canal</span>
-            <span>Rendez-vous</span>
-            <span>Part</span>
+        <div
+          style={{
+            background: surface,
+            border: `1px solid ${line}`,
+            borderRadius: radius,
+            padding: 20,
+            display: 'flex',
+            gap: 28,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${channelTotal} rendez-vous répartis par canal d'acquisition`}>
+            <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
+            {donutSegments(channelBreakdown, channelTotal, 54).map((seg, i) => (
+              <circle
+                key={channelBreakdown[i].channel}
+                cx={70}
+                cy={70}
+                r={54}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={18}
+                strokeDasharray={seg.dasharray}
+                strokeDashoffset={seg.dashoffset}
+                transform="rotate(-90 70 70)"
+              />
+            ))}
+            <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
+              {breakdownGrandTotal}
+            </text>
+            <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
+              RDV
+            </text>
+          </svg>
+
+          <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {channelBreakdown.map((row, i) => (
+              <div key={row.channel} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 3,
+                    background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{row.channel}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{row.count}</span>
+                <span style={{ fontSize: 12.5, color: muted, minWidth: 50, textAlign: 'right' }}>
+                  {formatPct(row.count / breakdownGrandTotal)}
+                </span>
+              </div>
+            ))}
+            {manualAdjustmentForBreakdown !== 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  paddingTop: 10,
+                  borderTop: `1px dashed ${line}`,
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: faint, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: muted }}>Ajustement manuel</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>
+                  {manualAdjustmentForBreakdown > 0 ? '+' : ''}
+                  {manualAdjustmentForBreakdown}
+                </span>
+                <span style={{ fontSize: 12.5, color: muted, minWidth: 50, textAlign: 'right' }}>
+                  {formatPct(manualAdjustmentForBreakdown / breakdownGrandTotal)}
+                </span>
+              </div>
+            ) : null}
           </div>
-          {channelBreakdown.map((row, index) => (
-            <div
-              key={row.channel}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1.4fr 1fr 1fr',
-                gap: 14,
-                alignItems: 'center',
-                padding: '14px 16px',
-                borderTop: index === 0 ? 'none' : `1px solid ${line}`,
-              }}
-            >
-              <span style={{ fontWeight: 500, fontSize: 14 }}>{row.channel}</span>
-              <span style={{ fontWeight: 500, fontSize: 14 }}>{row.count}</span>
-              <span style={{ fontWeight: 500, fontSize: 14 }}>{formatPct(row.ratio)}</span>
-            </div>
-          ))}
         </div>
       )}
 
@@ -382,36 +461,122 @@ export default async function CampaignDetailPage({
         <p style={{ color: muted }}>Aucune audience disponible pour cette campagne.</p>
       ) : (
         <div className="amerys-audience-grid" style={{ display: 'grid', gap: 18 }}>
-          {(audiences ?? []).map((audience) => {
-            const video = (videos ?? []).find((v) => v.audience_id === audience.id) ?? null
-            const audienceCostPerLead = costPerMetaPixelLead(audience.meta_spend, audience.meta_pixel_leads)
-            const isBarbier = audience.audience_type === 'barbier'
-            const badgeColor = isBarbier ? indigo : violet
-            const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
+          {(() => {
+            // Comparaison réelle entre les deux audiences (jamais de donnée
+            // inventée) : badge "Meilleur coût/lead" uniquement si au moins
+            // deux valeurs valides et distinctes existent.
+            const costsPerLead = (audiences ?? [])
+              .map((a) => costPerMetaPixelLead(a.meta_spend, a.meta_pixel_leads))
+              .filter((c): c is number => c !== null)
+            const distinctCosts = new Set(costsPerLead)
+            const bestCostPerLead = distinctCosts.size >= 2 ? Math.min(...costsPerLead) : null
 
-            const hookPlay = video ? hookRatePlay(video.video_plays, video.impressions) : null
-            const hookThru = video ? hookRateThruplay(video.thruplays, video.impressions) : null
-            const retention = video ? retentionRate(video.video_p100, video.video_p25) : null
+            return (audiences ?? []).map((audience) => {
+              const video = (videos ?? []).find((v) => v.audience_id === audience.id) ?? null
+              const audienceCostPerLead = costPerMetaPixelLead(audience.meta_spend, audience.meta_pixel_leads)
+              const isBarbier = audience.audience_type === 'barbier'
+              const badgeColor = isBarbier ? indigo : violet
+              const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
+              const isBestCostPerLead = bestCostPerLead !== null && audienceCostPerLead === bestCostPerLead
 
-            return (
-              <div
-                key={audience.id}
-                style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}
-              >
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: 999,
-                    background: badgeSoft,
-                    color: badgeColor,
-                  }}
-                >
-                  {isBarbier ? 'Barbier' : 'Coiffeur'}
-                </span>
+              const hookPlay = video ? hookRatePlay(video.video_plays, video.impressions) : null
+              const hookThru = video ? hookRateThruplay(video.thruplays, video.impressions) : null
+              const retention = video ? retentionRate(video.video_p100, video.video_p25) : null
 
+              return (
                 <div
+                  key={audience.id}
+                  style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}
+                >
+                  {/* Bannière vidéo : aucune miniature réelle disponible (Meta
+                      ne fournit pas d'URL d'image dans les métriques lues,
+                      et le schéma n'en stocke pas — hors périmètre ici).
+                      Icône Play purement décorative (pas de lecture vidéo
+                      réelle), badge vues et badge Meilleur coût/lead réels. */}
+                  <div
+                    style={{
+                      position: 'relative',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      background: headerBg,
+                      aspectRatio: '16 / 9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {video ? (
+                      <>
+                        <PlayIcon size={40} style={{ color: onDark }} />
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 10,
+                            left: 10,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: '3px 9px',
+                            borderRadius: 999,
+                            background: 'rgba(0, 0, 0, 0.45)',
+                            color: onDark,
+                          }}
+                        >
+                          {video.video_plays.toLocaleString('fr-FR')} vues
+                        </span>
+                        {isBestCostPerLead ? (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: 10,
+                              right: 10,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: '3px 9px',
+                              borderRadius: 999,
+                              background: green,
+                              color: onDark,
+                            }}
+                          >
+                            Meilleur coût/lead
+                          </span>
+                        ) : null}
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            padding: '20px 10px 8px',
+                            background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.7))',
+                            color: onDark,
+                            fontSize: 12,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {video.name}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: onDarkMuted, fontSize: 12.5 }}>Aucune vidéo disponible</span>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 999,
+                        background: badgeSoft,
+                        color: badgeColor,
+                      }}
+                    >
+                      {isBarbier ? 'Barbier' : 'Coiffeur'}
+                    </span>
+                  </div>
+
+                  <div
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
@@ -437,8 +602,7 @@ export default async function CampaignDetailPage({
 
                 {video ? (
                   <>
-                    <div style={{ fontSize: 12.5, fontWeight: 500, color: muted, marginTop: 12 }}>{video.name}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontWeight: 600, fontSize: 16 }}>{video.impressions.toLocaleString('fr-FR')}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Impressions</div>
@@ -467,12 +631,11 @@ export default async function CampaignDetailPage({
                       </div>
                     </div>
                   </>
-                ) : (
-                  <p style={{ color: muted, fontSize: 12.5, marginTop: 12 }}>Aucune vidéo disponible.</p>
-                )}
+                ) : null}
               </div>
             )
-          })}
+          })
+          })()}
         </div>
       )}
     </main>

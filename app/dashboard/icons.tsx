@@ -188,6 +188,18 @@ export function EyeIcon(props: IconProps) {
   )
 }
 
+// Décoratif uniquement (jamais de lecture vidéo réelle disponible) — rempli,
+// pas de contour, pour rester lisible en superposition sur une bannière
+// sombre.
+export function PlayIcon({ size = 18, style }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style} aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fillOpacity={0.16} />
+      <path d="M9.5 7.8v8.4a.9.9 0 0 0 1.37.77l6.6-4.2a.9.9 0 0 0 0-1.54l-6.6-4.2A.9.9 0 0 0 9.5 7.8Z" />
+    </svg>
+  )
+}
+
 export function EyeOffIcon(props: IconProps) {
   return base(
     <>

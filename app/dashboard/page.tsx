@@ -21,7 +21,6 @@ import {
   formatCost,
   formatEur,
   formatPeriod,
-  green,
   indigo,
   lavender,
   line,
@@ -32,7 +31,7 @@ import {
   surfaceAlt,
   violet,
 } from './format'
-import { CalendarIcon, DollarIcon, SyncIcon, UserIcon } from './icons'
+import { CalendarIcon, DollarIcon, UserIcon } from './icons'
 
 export default async function DashboardPage({
   searchParams,
@@ -197,14 +196,6 @@ export default async function DashboardPage({
             iconBg={softBg(amber, 0.14)}
             label="Coût / RDV réel"
             value={formatCost(avgRealCostPerAppointment)}
-          />
-          <KpiCard
-            icon={<SyncIcon size={20} />}
-            iconColor={green}
-            iconBg={softBg(green, 0.14)}
-            label="Campagnes actives"
-            value={String(campaignRows.length)}
-            foot="sur cette période"
           />
         </div>
 
@@ -400,13 +391,6 @@ export default async function DashboardPage({
               iconBg={softBg(amber, 0.14)}
               label="Coût / RDV réel"
               value={formatCost(avgRealCostPerAppointment)}
-            />
-            <KpiCard
-              icon={<SyncIcon size={20} />}
-              iconColor={green}
-              iconBg={softBg(green, 0.14)}
-              label="Campagnes synchronisées"
-              value={String(campaigns.length)}
             />
           </div>
 

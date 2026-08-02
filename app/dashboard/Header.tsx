@@ -9,7 +9,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import Image from 'next/image'
 import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
-import { ChevronDownIcon, ClockIcon, CrownIcon, UserIcon } from './icons'
+import { ClockIcon, CrownIcon, UserIcon } from './icons'
 import SyncMetaButton from './SyncMetaButton'
 import SyncCalendlyButton from './SyncCalendlyButton'
 import DashboardDateFilter from './DashboardDateFilter'
@@ -122,10 +122,7 @@ export default function Header({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <div style={pillStyle}>
-            {clientName ?? 'Aucun client'}
-            <ChevronDownIcon size={14} style={{ opacity: 0.6 }} />
-          </div>
+          <div style={pillStyle}>{clientName ?? 'Aucun client'}</div>
 
           <div style={pillStyle}>
             {isAdmin ? <CrownIcon size={14} /> : <UserIcon size={14} />}
@@ -139,29 +136,33 @@ export default function Header({
           {isAdmin ? <SyncMetaButton /> : null}
           {isAdmin ? <SyncCalendlyButton /> : null}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 10, color: onDarkMuted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                Dernière synchro Meta
+          {isAdmin ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 10, color: onDarkMuted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    Dernière synchro Meta
+                  </div>
+                  <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
+                    {formatDateTime(lastSyncAt)}
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
-                {formatDateTime(lastSyncAt)}
-              </div>
-            </div>
-          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 10, color: onDarkMuted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                Dernière modification Calendly
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <ClockIcon size={16} style={{ color: onDarkMuted, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 10, color: onDarkMuted, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    Dernière modification Calendly
+                  </div>
+                  <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
+                    {formatDateTime(lastCalendlyModifiedAt)}
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: 12.5, color: onDark, fontWeight: 500, marginTop: 1 }}>
-                {formatDateTime(lastCalendlyModifiedAt)}
-              </div>
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
       </div>
     </header>
