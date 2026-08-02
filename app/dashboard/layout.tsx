@@ -11,13 +11,19 @@ import { surfaceAlt } from './format'
 // profile.client_id — ce layout ne fournit que ce qui sert au chrome
 // (identité client/rôle, dernière synchronisation).
 //
-// Sidebar mobile/tablette (<=1024px) : bascule en tiroir pur CSS (case à
-// cocher masquée + <label htmlFor> comme déclencheurs, sélecteur général
-// frère `~`) — aucun JavaScript, aucune dépendance. Le tiroir et le fond
-// assombri démarrent à top: 0 (pas une hauteur de header codée en dur : sur
-// mobile le header s'empile sur plusieurs lignes et sa hauteur varie) ; le
-// header reste visible au-dessus grâce à son z-index supérieur, qui le fait
-// simplement recouvrir visuellement le haut du tiroir/fond.
+// Sidebar mobile/tablette (<=1024px) : bascule en tiroir CSS (case à cocher
+// masquée pilotant un sélecteur général frère `~`) — aucune dépendance
+// ajoutée. La case reste l'état source pour le CSS mais est exclue du tabindex
+// (tabIndex={-1}, en plus de aria-hidden) : ce n'est plus qu'un détail
+// d'implémentation invisible pour le clavier/lecteur d'écran. Les vrais
+// déclencheurs accessibles (bouton hamburger dans Header.tsx, bouton fermer
+// dans Sidebar.tsx) sont de vrais <button> qui appellent .click() sur cette
+// case pour la faire basculer, sans dupliquer la logique CSS existante. Le
+// tiroir et le fond assombri démarrent à top: 0 (pas une hauteur de header
+// codée en dur : sur mobile le header s'empile sur plusieurs lignes et sa
+// hauteur varie) ; le header reste visible au-dessus grâce à son z-index
+// supérieur, qui le fait simplement recouvrir visuellement le haut du
+// tiroir/fond.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
 
@@ -121,7 +127,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         }
       `}</style>
 
-      <input type="checkbox" id="amerys-menu" className="amerys-menu-input" aria-hidden="true" />
+      <input type="checkbox" id="amerys-menu" className="amerys-menu-input" aria-hidden="true" tabIndex={-1} />
 
       <Header
         clientName={clientName}

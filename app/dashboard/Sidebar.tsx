@@ -37,8 +37,13 @@ export default function Sidebar({
     ...(isAdmin ? [{ label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon }] : []),
   ]
 
+  function closeMenu() {
+    document.getElementById('amerys-menu')?.click()
+  }
+
   return (
     <aside
+      id="amerys-sidebar-nav"
       className="amerys-sidebar"
       style={{
         width: 220,
@@ -57,18 +62,23 @@ export default function Sidebar({
         // un style inline ne pourrait jamais être surchargé par une media query.
       }}
     >
-      <label
-        htmlFor="amerys-menu"
+      <button
+        type="button"
+        onClick={closeMenu}
         className="amerys-sidebar-close"
         aria-label="Fermer le menu"
         style={{
           alignSelf: 'flex-end',
+          display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           width: 30,
           height: 30,
           borderRadius: 8,
           border: `1px solid ${line}`,
+          background: 'transparent',
+          padding: 0,
+          font: 'inherit',
           color: muted,
           cursor: 'pointer',
           marginBottom: 12,
@@ -77,7 +87,7 @@ export default function Sidebar({
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
           <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
         </svg>
-      </label>
+      </button>
 
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {nav.map((item) => {

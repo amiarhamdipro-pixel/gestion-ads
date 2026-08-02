@@ -52,6 +52,7 @@ export default function EndDateEditor({ campaignId, startDate, initialEndDate }:
     <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       <input
         type="date"
+        aria-label="Date de fin de la campagne"
         value={endDate}
         min={startDate ?? undefined}
         onChange={(e) => setEndDate(e.target.value)}
@@ -85,11 +86,15 @@ export default function EndDateEditor({ campaignId, startDate, initialEndDate }:
         {isSaving ? 'Enregistrement…' : 'Enregistrer'}
       </button>
       {state.status === 'success' ? (
-        <span style={{ fontSize: 12, color: green }}>
+        <span role="status" style={{ fontSize: 12, color: green }}>
           Enregistré{duration !== null ? ` · Durée : ${duration} j` : ''}
         </span>
       ) : null}
-      {state.status === 'error' ? <span style={{ fontSize: 12, color: red }}>{state.message}</span> : null}
+      {state.status === 'error' ? (
+        <span role="alert" style={{ fontSize: 12, color: red }}>
+          {state.message}
+        </span>
+      ) : null}
     </div>
   )
 }

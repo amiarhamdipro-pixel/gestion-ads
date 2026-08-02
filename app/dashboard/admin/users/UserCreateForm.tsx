@@ -87,10 +87,14 @@ export default function UserCreateForm({ clients }: { clients: { id: string; nam
         {isPending ? 'Création…' : 'Créer'}
       </button>
       {state.status === 'success' ? (
-        <p style={{ gridColumn: '1 / -1', fontSize: 12.5, color: green, margin: 0 }}>Compte {state.email} créé.</p>
+        <p role="status" style={{ gridColumn: '1 / -1', fontSize: 12.5, color: green, margin: 0 }}>
+          Compte {state.email} créé.
+        </p>
       ) : null}
       {state.status === 'error' ? (
-        <p style={{ gridColumn: '1 / -1', fontSize: 12.5, color: red, margin: 0 }}>{state.message}</p>
+        <p role="alert" style={{ gridColumn: '1 / -1', fontSize: 12.5, color: red, margin: 0 }}>
+          {state.message}
+        </p>
       ) : null}
     </form>
   )

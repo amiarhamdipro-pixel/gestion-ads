@@ -97,6 +97,7 @@ export default function SyncMetaButton() {
       </button>
       {state.status === 'success' ? (
         <p
+          role="status"
           style={{
             position: 'absolute',
             right: 0,
@@ -115,6 +116,7 @@ export default function SyncMetaButton() {
       ) : null}
       {state.status === 'error' ? (
         <p
+          role="alert"
           style={{
             position: 'absolute',
             right: 0,

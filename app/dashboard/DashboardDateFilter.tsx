@@ -11,7 +11,7 @@
 import { useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { isDateRangePreset, type DateRangePreset } from '@/lib/calculations'
-import { accent, faint, formatPeriod, ink, line, muted, onDark, radius, surface } from './format'
+import { accent, formatPeriod, ink, line, muted, onDark, radius, surface } from './format'
 import { CalendarIcon, ChevronDownIcon } from './icons'
 
 const OPTIONS: { value: DateRangePreset; label: string }[] = [
@@ -204,7 +204,7 @@ export default function DashboardDateFilter() {
               border: 0,
               background: 'transparent',
               fontSize: 12,
-              color: faint,
+              color: muted,
               cursor: 'pointer',
             }}
           >

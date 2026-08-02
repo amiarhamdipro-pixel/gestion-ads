@@ -87,6 +87,7 @@ export default function SyncCalendlyButton() {
       </button>
       {state.status === 'success' ? (
         <p
+          role="status"
           style={{
             position: 'absolute',
             right: 0,
@@ -105,6 +106,7 @@ export default function SyncCalendlyButton() {
       ) : null}
       {state.status === 'error' ? (
         <p
+          role="alert"
           style={{
             position: 'absolute',
             right: 0,

@@ -1,8 +1,12 @@
+'use client'
+
 // Header applicatif persistant (chrome de l'app, pleine largeur — MAQUETTE-UI.png).
 // Purement présentationnel : toutes les données sont chargées par
-// app/dashboard/layout.tsx, aucune requête ni logique ici.
-
-import { Suspense } from 'react'
+// app/dashboard/layout.tsx, aucune requête ici. 'use client' uniquement pour
+// piloter le bouton hamburger (état ouvert/fermé exposé via aria-expanded,
+// synchronisé sur la case à cocher #amerys-menu qui reste la seule source de
+// vérité pour le CSS du tiroir — voir layout.tsx).
+import { Suspense, useEffect, useState } from 'react'
 import Image from 'next/image'
 import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
 import { ChevronDownIcon, ClockIcon, CrownIcon, UserIcon } from './icons'
@@ -41,6 +45,21 @@ export default function Header({
   lastSyncAt: string | null
   lastCalendlyModifiedAt: string | null
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const checkbox = document.getElementById('amerys-menu') as HTMLInputElement | null
+    if (!checkbox) return
+    const sync = () => setMenuOpen(checkbox.checked)
+    sync()
+    checkbox.addEventListener('change', sync)
+    return () => checkbox.removeEventListener('change', sync)
+  }, [])
+
+  function toggleMenu() {
+    document.getElementById('amerys-menu')?.click()
+  }
+
   return (
     <header style={{ background: headerBg, borderBottom: `1px solid ${onDarkLine}`, position: 'relative', zIndex: 60 }}>
       <div
@@ -54,17 +73,24 @@ export default function Header({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label
-            htmlFor="amerys-menu"
+          <button
+            type="button"
+            onClick={toggleMenu}
             className="amerys-menu-label"
             aria-label="Ouvrir le menu"
+            aria-expanded={menuOpen}
+            aria-controls="amerys-sidebar-nav"
             style={{
+              display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               width: 38,
               height: 38,
               borderRadius: 10,
               background: 'rgba(255, 255, 255, 0.1)',
+              border: 0,
+              padding: 0,
+              font: 'inherit',
               cursor: 'pointer',
               flexShrink: 0,
             }}
@@ -72,7 +98,7 @@ export default function Header({
             <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
               <path d="M1 1h16M1 7h16M1 13h16" stroke={onDark} strokeWidth={1.8} strokeLinecap="round" />
             </svg>
-          </label>
+          </button>
 
           <div
             style={{
