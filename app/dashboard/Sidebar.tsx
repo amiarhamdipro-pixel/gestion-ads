@@ -1,20 +1,15 @@
 'use client'
 
 // Navigation latérale persistante. Reflète uniquement les fonctionnalités
-// réellement disponibles : Vue d'ensemble et Comparaison. Aucune entrée
-// décorative vers des pages qui n'existent pas (Vidéos, Synchronisations,
-// Clients, Utilisateurs, Paramètres, Administration...).
+// réellement disponibles : Vue d'ensemble et Comparaison pour tous, plus
+// Utilisateurs pour les admins uniquement. Aucune entrée décorative vers des
+// pages qui n'existent pas (Vidéos, Synchronisations, Clients, Paramètres...).
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { logout } from './actions'
 import { accent, ink, line, muted, surface } from './format'
-import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon } from './icons'
-
-const nav = [
-  { label: "Vue d'ensemble", href: '/dashboard', icon: HomeIcon },
-  { label: 'Comparaison', href: '/dashboard/comparison', icon: CompareIcon },
-]
+import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, UserIcon } from './icons'
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -22,11 +17,25 @@ function initials(name: string): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase()
 }
 
-export default function Sidebar({ userName, userEmail }: { userName: string; userEmail: string }) {
+export default function Sidebar({
+  userName,
+  userEmail,
+  isAdmin,
+}: {
+  userName: string
+  userEmail: string
+  isAdmin: boolean
+}) {
   const pathname = usePathname()
   // Préserve le filtre de période actif (DashboardDateFilter) en naviguant
   // entre les pages : la query string est l'état partagé, aucune duplication.
   const query = useSearchParams().toString()
+
+  const nav = [
+    { label: "Vue d'ensemble", href: '/dashboard', icon: HomeIcon },
+    { label: 'Comparaison', href: '/dashboard/comparison', icon: CompareIcon },
+    ...(isAdmin ? [{ label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon }] : []),
+  ]
 
   return (
     <aside

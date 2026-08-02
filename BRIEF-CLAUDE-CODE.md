@@ -392,6 +392,34 @@ code a changé depuis) :
   fraîchement mises à jour par ce même appel (filtre de période nourri) ;
   aucune ligne fraîche avant l'appel (0 → 130), confirmant l'absence de
   double exécution.
+- **Administration minimale des utilisateurs (`/dashboard/admin/users`,
+  admin uniquement)** : liste les comptes existants (e-mail, rôle, client
+  associé) et un formulaire de création (e-mail, mot de passe temporaire,
+  rôle `admin`/`client`, client existant obligatoire). Garde à trois
+  niveaux : `page.tsx` redirige vers `/login` (anonyme) ou `/dashboard`
+  (rôle ≠ admin) ; la Server Action `createUser`
+  (`app/dashboard/admin/users/actions.ts`) revérifie le rôle admin
+  côté serveur indépendamment de l'affichage (une Server Action est un point
+  d'entrée public au même titre qu'une route API) ; `Sidebar.tsx` n'affiche
+  le lien « Utilisateurs » que si `isAdmin` (nouvelle prop, propagée depuis
+  `layout.tsx`). Lecture de la liste et création passent exclusivement par
+  `createAdminClient()` (service_role, `lib/supabase/admin.ts` non modifié) :
+  c'est le seul moyen de lire les e-mails (`auth.admin.listUsers()`, aucune
+  colonne email dans `profiles` — aucun nouveau schéma). Séquence de
+  création : vérifie l'existence du `clientId` (évite de créer un compte
+  Auth pour un client invalide) → `auth.admin.createUser()` → insertion
+  `profiles`. **Anti-compte-orphelin** : si l'insertion du profil échoue
+  après la création du compte Auth, celui-ci est immédiatement supprimé
+  (`auth.admin.deleteUser()`) et l'échec est renvoyé explicitement. Pas de
+  suppression/modification de compte dans cet incrément. Validé en
+  conditions réelles (comptes de test jetables, supprimés après coup) :
+  accès anonyme → redirigé `/login` ; accès client → redirigé `/dashboard`
+  (jamais la page admin) ; accès admin → 200 avec liste correcte (e-mails
+  des deux comptes de test présents) ; lien Sidebar présent pour l'admin,
+  absent pour le client ; création réussie avec `client_id`/`role` corrects
+  en base ; rollback anti-orphelin déclenché par une vraie violation de
+  contrainte FK (`client_id` inexistant) — compte Auth et profil tous deux
+  absents après coup, confirmé indépendamment.
 
 ## 6. Tâche immédiate
 

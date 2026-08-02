@@ -134,7 +134,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="amerys-body" style={{ display: 'flex', alignItems: 'flex-start' }}>
         <label htmlFor="amerys-menu" className="amerys-backdrop" aria-hidden="true" />
         <Suspense fallback={null}>
-          <Sidebar userName={profile?.full_name ?? user.email ?? 'Utilisateur'} userEmail={user.email ?? ''} />
+          <Sidebar
+            userName={profile?.full_name ?? user.email ?? 'Utilisateur'}
+            userEmail={user.email ?? ''}
+            isAdmin={isAdmin}
+          />
         </Suspense>
         <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
       </div>
