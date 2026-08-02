@@ -10,9 +10,40 @@
 // lib/calculations.ts) : aucune ventilation Barbier/Coiffeur, aucune
 // attribution arbitraire en cas de chevauchement (erreur explicite à la
 // place).
+//
+// Lecture de l'acquisition_channel réellement incrémentale : la liste des
+// événements (fetchScheduledEvents, statut/start_time/event_type_uri) est
+// toujours relue en entier — pas chère, un seul type d'appel — mais /invitees
+// (fetchAcquisitionChannels, coûteux, cause de la panne de synchro d'origine)
+// n'est appelé QUE pour les rendez-vous nouveaux ou dont acquisition_channel
+// est encore null/vide en base. Un rendez-vous déjà connu avec un canal
+// renseigné réutilise directement la valeur stockée : jamais reperdue, jamais
+// re-demandée à Calendly. Les champs structurels (status, start_time,
+// event_type_uri) proviennent toujours de la lecture fraîche, jamais de la
+// base — seul le canal est éligible à la réutilisation.
+//
+// Règle métier : le dashboard ne mesure que les performances Meta. Un
+// rendez-vous n'est rattaché à une campagne (campaign_id) que si son
+// acquisition_channel identifie Facebook ou Instagram, variante "... Ads"
+// incluse (voir isMetaAcquisitionChannel ci-dessous) — les autres canaux (Google, Tiktok,
+// MCB, etc., et les réponses vides) restent enregistrés tels quels dans
+// appointments (aucune perte de donnée, aucune suppression), mais ne
+// reçoivent jamais de campaign_id. Comme chaque page du dashboard et
+// campaign_daily_stats filtrent déjà exclusivement sur campaign_id non nul
+// (jamais sur acquisition_channel directement), cette seule règle suffit à
+// exclure les canaux non-Meta de tous les calculs avals (KPI, coût réel/RDV,
+// graphique, détail campagne, comparaison) sans toucher ces fichiers. Un
+// rendez-vous non-Meta qui avait déjà un campaign_id avant ce correctif est
+// automatiquement détaché (remis à null) au prochain passage : la
+// comparaison isUnchanged ci-dessous traite ça comme un changement réel.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { fetchAppointments, type CalendlyAppointmentRaw } from '@/lib/calendly/appointments'
+import {
+  fetchAcquisitionChannels,
+  fetchScheduledEvents,
+  type CalendlyAppointmentRaw,
+  type CalendlyScheduledAppointment,
+} from '@/lib/calendly/appointments'
 import { mapCalendlyEventToAppointmentInsert } from '@/lib/calendly/mapper'
 import { campaignsMatchingAppointment, type CampaignWindow } from '@/lib/calculations'
 import type { Appointment } from '@/types/database'
@@ -23,6 +54,20 @@ type ExistingAppointmentRow = Pick<
 >
 
 type AppointmentWithCampaign = CalendlyAppointmentRaw & { campaign_id: string | null }
+
+// Valeurs réellement observées en production (1147 rendez-vous, script de
+// diagnostic ponctuel) : Facebook (245), Instagram (321), Facebook Ads (11),
+// Instagram Ads (4), Google (290), Google Ads (8), Tiktok (71), Tiktok Ads
+// (2), MCB (45), vide/null (150). acquisition_channel est un champ texte
+// libre (lib/calendly/appointments.ts) : on normalise (trim + minuscule) et
+// on retient tout canal commençant par "facebook" ou "instagram", pour
+// couvrir aussi bien la réponse nue que sa variante "... Ads" — les deux
+// désignent sans ambiguïté le même canal Meta.
+function isMetaAcquisitionChannel(channel: string | null): boolean {
+  if (!channel) return false
+  const normalized = channel.trim().toLowerCase()
+  return normalized.startsWith('facebook') || normalized.startsWith('instagram')
+}
 
 // start_time est comparé par instant (Date.getTime()), pas par égalité de
 // chaîne : Calendly renvoie "...Z" alors que Postgres/PostgREST renvoie
@@ -40,6 +85,7 @@ function isUnchanged(existing: ExistingAppointmentRow, incoming: AppointmentWith
 
 export type SyncAppointmentsResult = {
   read: number
+  invitees: number
   created: number
   updated: number
   skipped: number
@@ -66,30 +112,31 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 export async function syncAppointments(clientId: string): Promise<SyncAppointmentsResult> {
   const supabase = createAdminClient()
-  const { appointments: raw, errors: fetchErrors } = await fetchAppointments()
+  const { events: rawEvents, errors: eventErrors } = await fetchScheduledEvents()
 
   // skipped compte deux cas : un doublon Calendly au sein du même lot
   // (défensif — ne devrait pas arriver, statuts actif/annulé disjoints) et,
   // plus bas, un rendez-vous déjà en base et strictement identique
   // (isUnchanged). Dans les deux cas, rien n'est envoyé à l'upsert.
   const seen = new Set<string>()
-  const deduped: CalendlyAppointmentRaw[] = []
+  const dedupedEvents: CalendlyScheduledAppointment[] = []
   let skipped = 0
 
-  for (const appointment of raw) {
-    if (seen.has(appointment.calendly_event_uri)) {
+  for (const event of rawEvents) {
+    if (seen.has(event.calendly_event_uri)) {
       skipped += 1
       continue
     }
-    seen.add(appointment.calendly_event_uri)
-    deduped.push(appointment)
+    seen.add(event.calendly_event_uri)
+    dedupedEvents.push(event)
   }
 
-  const errorDetails = [...fetchErrors]
+  const errorDetails = [...eventErrors]
 
-  if (deduped.length === 0) {
+  if (dedupedEvents.length === 0) {
     return {
-      read: raw.length,
+      read: rawEvents.length,
+      invitees: 0,
       created: 0,
       updated: 0,
       skipped,
@@ -102,7 +149,7 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
 
   const existingByUri = new Map<string, ExistingAppointmentRow>()
   for (const batch of chunk(
-    deduped.map((a) => a.calendly_event_uri),
+    dedupedEvents.map((e) => e.calendly_event_uri),
     CHUNK_SIZE
   )) {
     const { data: existingRows, error: existingError } = await supabase
@@ -119,6 +166,24 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
       existingByUri.set(row.calendly_event_uri, row)
     }
   }
+
+  // /invitees uniquement pour les rendez-vous nouveaux (absents de
+  // existingByUri) ou dont le canal stocké est encore null/vide — jamais pour
+  // un canal déjà connu (cause racine de la lenteur d'origine, voir en-tête).
+  const needsChannelUris = dedupedEvents
+    .filter((event) => !existingByUri.get(event.calendly_event_uri)?.acquisition_channel)
+    .map((event) => event.calendly_event_uri)
+
+  const { channels: freshChannels, errors: channelErrors, invited } = await fetchAcquisitionChannels(needsChannelUris)
+  errorDetails.push(...channelErrors)
+
+  const deduped: CalendlyAppointmentRaw[] = dedupedEvents.map((event) => {
+    const existing = existingByUri.get(event.calendly_event_uri)
+    const acquisitionChannel = freshChannels.has(event.calendly_event_uri)
+      ? (freshChannels.get(event.calendly_event_uri) ?? null)
+      : (existing?.acquisition_channel ?? null)
+    return { ...event, acquisition_channel: acquisitionChannel }
+  })
 
   // Campagnes du même client uniquement, avec start_date ET end_date
   // renseignées (les autres sont ignorées : fenêtre indéterminée).
@@ -145,7 +210,9 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
 
   for (const appointment of deduped) {
     const existing = existingByUri.get(appointment.calendly_event_uri)
-    const matches = campaignsMatchingAppointment(campaignWindows, appointment.start_time)
+    const matches = isMetaAcquisitionChannel(appointment.acquisition_channel)
+      ? campaignsMatchingAppointment(campaignWindows, appointment.start_time)
+      : []
 
     let campaignId: string | null
     if (matches.length > 1) {
@@ -191,7 +258,8 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   }
 
   return {
-    read: raw.length,
+    read: rawEvents.length,
+    invitees: invited,
     created,
     updated,
     skipped,

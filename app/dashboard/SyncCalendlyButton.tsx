@@ -6,6 +6,7 @@ import { SyncIcon } from './icons'
 
 type AppointmentsReport = {
   read: number
+  invitees: number
   created: number
   updated: number
   skipped: number
@@ -26,7 +27,7 @@ type SyncState =
 
 function summarizeAppointments(appointments: AppointmentsReport): string {
   return (
-    `Rendez-vous : ${appointments.read} lu${appointments.read > 1 ? 's' : ''} · ${appointments.created} créé${appointments.created > 1 ? 's' : ''} · ${appointments.updated} mis à jour · ${appointments.skipped} ignoré${appointments.skipped > 1 ? 's' : ''}` +
+    `Rendez-vous : ${appointments.read} lu${appointments.read > 1 ? 's' : ''} · ${appointments.invitees} appel${appointments.invitees > 1 ? 's' : ''} invités · ${appointments.created} créé${appointments.created > 1 ? 's' : ''} · ${appointments.updated} mis à jour · ${appointments.skipped} ignoré${appointments.skipped > 1 ? 's' : ''}` +
     (appointments.errors > 0 ? ` · ${appointments.errors} erreur${appointments.errors > 1 ? 's' : ''}` : '')
   )
 }

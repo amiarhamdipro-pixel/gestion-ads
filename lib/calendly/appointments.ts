@@ -6,6 +6,30 @@
 // réponse à la question "canal d'acquisition" (catégorielle, non personnelle,
 // confirmée lors de l'investigation Phase 0, scripts/test-calendly.ts) est
 // extraite. Aucun rapprochement Meta ici.
+//
+// Cause racine de la panne de synchro (mesurée en conditions réelles, 1147
+// événements) : l'API Calendly n'expose pas les réponses de formulaire sur
+// /scheduled_events lui-même — un appel /invitees séparé est nécessaire par
+// événement pour connaître son acquisition_channel. La version précédente
+// refaisait cet appel pour TOUS les événements à CHAQUE synchro, y compris
+// les rendez-vous déjà connus dont le canal ne change jamais après coup —
+// avec 1147 événements, une boucle séquentielle prenait plus de 2 minutes
+// (parallélisée, encore ~130-150s à cause de la limite de débit propre au
+// compte Calendly, HTTP 429 mesuré en conditions réelles), largement au-delà
+// du délai d'exécution d'une route HTTP (timeout plateforme/proxy) : la
+// requête n'aboutissait jamais côté admin, sans qu'aucune exception
+// applicative ne soit levée (le process est arrêté de l'extérieur).
+//
+// Découpage en deux étapes distinctes pour permettre à l'appelant
+// (lib/sync/syncAppointments.ts, qui seul connaît l'état déjà en base) de ne
+// solliciter /invitees que pour les événements qui en ont réellement besoin
+// (nouveaux, ou canal existant null/vide) :
+// - fetchScheduledEvents() : liste complète des événements (statut,
+//   start_time, event_type_uri) — un seul type d'appel (/scheduled_events),
+//   aucun /invitees, donc rapide et sans risque de limite de débit quel que
+//   soit le volume.
+// - fetchAcquisitionChannels(eventUris) : n'interroge /invitees QUE pour les
+//   URIs demandées, avec la même parallélisation bornée + retry qu'avant.
 
 import { calendlyGet, calendlyGetAllPages } from './client'
 import type {
@@ -29,15 +53,47 @@ export type CalendlyAppointmentRaw = {
   acquisition_channel: string | null
 }
 
-export type FetchAppointmentsResult = {
-  appointments: CalendlyAppointmentRaw[]
+export type CalendlyScheduledAppointment = Omit<CalendlyAppointmentRaw, 'acquisition_channel'>
+
+export type FetchScheduledEventsResult = {
+  events: CalendlyScheduledAppointment[]
   errors: string[]
+}
+
+export type FetchAcquisitionChannelsResult = {
+  // Clé = calendly_event_uri. Une entrée absente signifie un échec de
+  // lecture pour cette URI (voir errors) ; le canal existant en base doit
+  // alors être préservé par l'appelant, jamais remplacé par null.
+  channels: Map<string, string | null>
+  errors: string[]
+  invited: number
 }
 
 function acquisitionChannelQuestion(): string {
   return (process.env.CALENDLY_ACQUISITION_CHANNEL_QUESTION || DEFAULT_ACQUISITION_CHANNEL_QUESTION)
     .trim()
     .toLowerCase()
+}
+
+// Nombre d'appels /invitees menés de front. Pas de dépendance ajoutée (pas de
+// bibliothèque de limitation de concurrence) : implémentation minimale à base
+// de workers Promise.all.
+const INVITEE_FETCH_CONCURRENCY = 4
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await fn(items[currentIndex])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
 
 async function resolveOrganizationUri(): Promise<string> {
@@ -62,7 +118,9 @@ async function findAcquisitionChannel(eventUri: string): Promise<string | null> 
   return match ? match.answer.trim() : null
 }
 
-export async function fetchAppointments(): Promise<FetchAppointmentsResult> {
+// Liste les événements (actifs + annulés) sans jamais appeler /invitees :
+// rapide et à coût constant quel que soit le volume historique.
+export async function fetchScheduledEvents(): Promise<FetchScheduledEventsResult> {
   const organizationUri = await resolveOrganizationUri()
 
   const events: CalendlyScheduledEvent[] = []
@@ -75,29 +133,40 @@ export async function fetchAppointments(): Promise<FetchAppointmentsResult> {
     events.push(...page)
   }
 
-  const appointments: CalendlyAppointmentRaw[] = []
+  const result: CalendlyScheduledAppointment[] = []
   const errors: string[] = []
 
   for (const event of events) {
-    if (event.status !== 'active' && event.status !== 'canceled') {
-      errors.push(`Rendez-vous ${event.uri} ignoré : statut inattendu "${event.status}".`)
-      continue
-    }
-
-    try {
-      const acquisitionChannel = await findAcquisitionChannel(event.uri)
-      appointments.push({
+    if (event.status === 'active' || event.status === 'canceled') {
+      result.push({
         calendly_event_uri: event.uri,
         event_type_uri: event.event_type,
         start_time: event.start_time,
         status: event.status,
-        acquisition_channel: acquisitionChannel,
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      errors.push(`Échec lecture des invités pour ${event.uri} : ${message}`)
+    } else {
+      errors.push(`Rendez-vous ${event.uri} ignoré : statut inattendu "${event.status}".`)
     }
   }
 
-  return { appointments, errors }
+  return { events: result, errors }
+}
+
+// N'appelle /invitees que pour les URIs fournies par l'appelant (nouveaux
+// rendez-vous, ou canal déjà en base null/vide — jamais pour un canal déjà
+// renseigné : voir lib/sync/syncAppointments.ts).
+export async function fetchAcquisitionChannels(eventUris: string[]): Promise<FetchAcquisitionChannelsResult> {
+  const channels = new Map<string, string | null>()
+  const errors: string[] = []
+
+  await mapWithConcurrency(eventUris, INVITEE_FETCH_CONCURRENCY, async (eventUri) => {
+    try {
+      channels.set(eventUri, await findAcquisitionChannel(eventUri))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      errors.push(`Échec lecture des invités pour ${eventUri} : ${message}`)
+    }
+  })
+
+  return { channels, errors, invited: eventUris.length }
 }

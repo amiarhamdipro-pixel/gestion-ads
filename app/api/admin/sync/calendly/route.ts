@@ -40,6 +40,7 @@ export async function POST() {
 
   const appointments = {
     read: appointmentsResult.read,
+    invitees: appointmentsResult.invitees,
     created: appointmentsResult.created,
     updated: appointmentsResult.updated,
     skipped: appointmentsResult.skipped,
