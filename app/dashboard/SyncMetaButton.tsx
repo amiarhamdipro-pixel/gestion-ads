@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { accent, onDark, onDarkMuted } from './format'
+import { accent, onDark, onDarkMuted, redOnDark } from './format'
 import { SyncIcon } from './icons'
 
 type TotalsReport = {
@@ -123,7 +123,7 @@ export default function SyncMetaButton() {
             top: '100%',
             marginTop: 8,
             fontSize: 11.5,
-            color: '#FF9B9B',
+            color: redOnDark,
             whiteSpace: 'nowrap',
           }}
         >

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { syncAllCampaigns } from '@/lib/sync/syncAllCampaigns'
 import { syncAllCampaignsDailyStats } from '@/lib/sync/syncAllCampaignsDailyStats'
+import { logError } from '@/lib/logger'
 
 export async function POST() {
   const supabase = await createClient()
@@ -44,7 +45,7 @@ export async function POST() {
   try {
     totalsReport = await syncAllCampaigns(syncParams)
   } catch (error) {
-    console.error('Échec /api/admin/sync (totaux) :', error instanceof Error ? error.message : 'erreur inconnue')
+    logError('sync', '/api/admin/sync (totaux)', error instanceof Error ? error.message : 'erreur inconnue')
     return NextResponse.json({ error: 'Échec de la synchronisation des totaux.' }, { status: 500 })
   }
 
@@ -96,7 +97,7 @@ export async function POST() {
 
     return NextResponse.json({ totals, daily })
   } catch (error) {
-    console.error('Échec /api/admin/sync (quotidien) :', error instanceof Error ? error.message : 'erreur inconnue')
+    logError('sync', '/api/admin/sync (quotidien)', error instanceof Error ? error.message : 'erreur inconnue')
     return NextResponse.json({
       totals,
       daily: { error: 'Échec de la synchronisation quotidienne.' },

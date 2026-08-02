@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { logError } from '@/lib/logger'
 import {
   campaignDurationDays,
   costPerMetaPixelLead,
@@ -128,7 +129,7 @@ export default async function CampaignDetailPage({
     .eq('status', 'active')
 
   if (appointmentsError) {
-    console.error(`Échec lecture rendez-vous campagne ${campaign.id} : ${appointmentsError.message}`)
+    logError('api', `campagne ${campaign.id}`, `lecture rendez-vous : ${appointmentsError.message}`)
   }
 
   const activeAppointments = activeAppointmentRows ?? []

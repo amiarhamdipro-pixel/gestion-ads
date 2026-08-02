@@ -14,6 +14,7 @@
 // (voir app/api/admin/campaigns/end-date/route.ts).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logError } from '@/lib/logger'
 import { fetchAdInsights, fetchAdSetAds, fetchAdSetInsights, fetchCampaignAdSets } from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
 import { mapAdSetToAudienceInsert, mapAdToVideoInsert } from './mapper'
@@ -68,7 +69,7 @@ async function finishSyncRun(
 
   if (error) {
     // Ne masque pas l'erreur/succès principal de syncCampaign : simple trace.
-    console.error(`Échec mise à jour sync_run ${syncRunId} : ${error.message}`)
+    logError('sync', `sync_run ${syncRunId}`, `échec mise à jour : ${error.message}`)
   }
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { syncAppointments } from '@/lib/sync/syncAppointments'
 import { syncCalendlyDailyStats } from '@/lib/sync/syncCalendlyDailyStats'
+import { logError } from '@/lib/logger'
 
 export async function POST() {
   const supabase = await createClient()
@@ -33,10 +34,7 @@ export async function POST() {
   try {
     appointmentsResult = await syncAppointments(profile.client_id)
   } catch (error) {
-    console.error(
-      'Échec /api/admin/sync/calendly (appointments) :',
-      error instanceof Error ? error.message : 'erreur inconnue'
-    )
+    logError('sync', '/api/admin/sync/calendly (appointments)', error instanceof Error ? error.message : 'erreur inconnue')
     return NextResponse.json({ error: 'Échec de la synchronisation Calendly (rendez-vous).' }, { status: 500 })
   }
 
@@ -66,10 +64,7 @@ export async function POST() {
       },
     })
   } catch (error) {
-    console.error(
-      'Échec /api/admin/sync/calendly (quotidien) :',
-      error instanceof Error ? error.message : 'erreur inconnue'
-    )
+    logError('sync', '/api/admin/sync/calendly (quotidien)', error instanceof Error ? error.message : 'erreur inconnue')
     return NextResponse.json({
       appointments,
       daily: { error: 'Échec de la synchronisation quotidienne Calendly.' },

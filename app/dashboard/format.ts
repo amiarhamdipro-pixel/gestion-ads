@@ -36,6 +36,11 @@ export const headerBg = '#1E1B4B'
 export const onDark = '#FFFFFF'
 export const onDarkMuted = 'rgba(255, 255, 255, 0.62)'
 export const onDarkLine = 'rgba(255, 255, 255, 0.12)'
+// Rouge lisible sur fond sombre (headerBg) — `red` (#EF4444) n'offre pas un
+// contraste suffisant (~4,25:1) pour du texte 11-12px sur headerBg. Valeur
+// déjà utilisée telle quelle dans SyncMetaButton/SyncCalendlyButton, promue
+// ici en token nommé pour rester cohérente si réutilisée ailleurs.
+export const redOnDark = '#FF9B9B'
 
 export const sidebarWidth = 232
 
@@ -67,8 +72,8 @@ export function formatPeriod(startDate: string | null, endDate: string | null): 
   return 'Période non disponible'
 }
 
-export function formatDateTime(iso: string | null): string {
-  if (!iso) return 'Aucune synchronisation'
+export function formatDateTime(iso: string | null, fallback = 'Aucune synchronisation'): string {
+  if (!iso) return fallback
   const formatter = new Intl.DateTimeFormat('fr-FR', {
     day: 'numeric',
     month: 'short',

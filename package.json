@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test:meta-sync": "tsx scripts/test-meta-sync.ts"
   },
   "dependencies": {

@@ -420,6 +420,78 @@ code a changé depuis) :
   en base ; rollback anti-orphelin déclenché par une vraie violation de
   contrainte FK (`client_id` inexistant) — compte Auth et profil tous deux
   absents après coup, confirmé indépendamment.
+- **`/` redirige vers `/login`, `/login` refait visuellement** (thème du
+  dashboard réutilisé — palette/rayons/ombres de `app/dashboard/format.ts`),
+  sans changement de logique d'authentification.
+- **Préparation production (MVP terminé, incrément de durcissement, aucun
+  changement métier/RLS/schéma/Meta/Calendly)** :
+  - **Récupération de mot de passe complète** : `/forgot-password` (envoi
+    e-mail Supabase, message générique qu'un compte existe ou non — anti-
+    énumération), `app/auth/confirm/route.ts` (échange le lien reçu contre
+    une session, callback PKCE), `/update-password` (accessible uniquement
+    avec une session active). Composants d'auth mutualisés
+    (`app/AuthShell.tsx`, `app/auth-ui.tsx`) entre `/login`,
+    `/forgot-password` et `/update-password`. **Correctif critique découvert
+    lors de la validation ultérieure** : ce projet Supabase délivre en
+    réalité les liens de récupération au format historique (jetons dans le
+    *fragment* d'URL, `#access_token=...&type=recovery`, jamais transmis au
+    serveur), pas au format `?code=` que `app/auth/confirm/route.ts` gère
+    seul — confirmé en générant un vrai lien (`auth.admin.generateLink`) et
+    en suivant la redirection réelle. Sans correctif, le parcours ne
+    fonctionnait jamais, quelle que soit la configuration de
+    `NEXT_PUBLIC_SITE_URL`. Corrigé par `app/login/RecoveryHashHandler.tsx`
+    (composant client monté sur `/login`, où le fragment atterrit après le
+    double saut de redirection serveur) : lit le fragment, établit la
+    session via `auth.setSession()`, redirige vers `/update-password` ; si
+    Supabase renvoie une erreur dans le fragment (lien expiré/invalide),
+    redirige vers `/login?error=...` avec un message propre au lieu d'échouer
+    silencieusement. `app/auth/confirm/route.ts` reste en place (couvre le
+    format `?code=` si l'allow-list Supabase est un jour reconfigurée en
+    PKCE) — les deux mécanismes coexistent sans conflit.
+  - **Session** : `proxy.ts` (middleware Next.js 16) rafraîchissait déjà la
+    session et protégeait `/dashboard/*` — confirmé en conditions réelles,
+    aucun changement nécessaire (une tentative d'ajouter un `middleware.ts`
+    séparé a été détectée en conflit au build et retirée).
+  - **Pages système** : `app/not-found.tsx`, `app/error.tsx`,
+    `app/global-error.tsx` (jamais de trace technique affichée),
+    `app/forbidden/page.tsx` (réutilisable, non branchée sur les gardes
+    d'accès existantes qui redirigent déjà silencieusement),
+    `app/dashboard/loading.tsx`.
+  - **Monitoring léger** : `lib/logger.ts` (`logError`, catégories
+    `api`/`sync`/`critical`, stdout/stderr uniquement), branché sur tous les
+    `console.error` existants (routes de synchro, pages dashboard,
+    `syncCampaign.ts`) et les nouveaux points d'échec (mot de passe,
+    administration).
+  - **Sécurité** : en-têtes HTTP (`next.config.ts` : `X-Content-Type-Options`,
+    `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`,
+    `Strict-Transport-Security`), cookies/validation d'entrées vérifiés
+    (déjà conformes, aucun changement requis).
+  - **Administration complétée** (`app/dashboard/admin/users/`) :
+    suppression de compte, réinitialisation de mot de passe (même mécanisme
+    que `/forgot-password`), désactivation/réactivation
+    (`auth.admin.updateUserById(ban_duration)`), colonnes « Créé le » et
+    « Dernière connexion » — toutes deux déjà fournies par
+    `auth.admin.listUsers()`, aucun changement de schéma. Garde anti-auto-
+    suppression/désactivation (un admin ne peut pas agir sur son propre
+    compte).
+  - **UX** : token `redOnDark` (palette) remplaçant une couleur d'erreur en
+    dur dupliquée dans les boutons de synchro ; `role="status"`/`role="alert"`
+    uniformisés sur tous les messages de formulaire.
+  - **Qualité** : suppression du script de test obsolète
+    `scripts/test-admin-sync-route.ts` (contrat de route périmé), titre/
+    description de page par défaut Next.js remplacés par le nom réel de
+    l'app. Aucun `TODO`/`FIXME` trouvé dans le code.
+  - **Documentation** : `README.md` réécrit (architecture, variables d'env,
+    déploiement, sauvegarde/restauration, commandes utiles) ;
+    `.env.example` complété (`LEAD_ACTION_TYPE`, `NEXT_PUBLIC_SITE_URL`).
+  - Validé en conditions réelles (comptes de test jetables) : pages système,
+    session/redirections, formulaire mot de passe oublié, gestion
+    utilisateurs (désactivation/réactivation/`created_at` réels) — lint,
+    typecheck et build systématiquement vérifiés après chaque étape.
+  - **Hors périmètre / nécessiterait une action manuelle hors code** :
+    configurer `NEXT_PUBLIC_SITE_URL` et les *Redirect URLs* Supabase Auth
+    en production pour que le lien de réinitialisation fonctionne
+    réellement (voir README.md, section Déploiement).
 
 ## 6. Tâche immédiate
 

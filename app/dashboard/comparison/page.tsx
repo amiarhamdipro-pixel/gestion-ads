@@ -12,6 +12,7 @@ import {
   resolveDateRange,
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
+import { logError } from '@/lib/logger'
 import { accent, faint, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import EmptyPeriodState from '../EmptyPeriodState'
 import VideoRanking, { type RankedVideo } from './VideoRanking'
@@ -437,7 +438,7 @@ export default async function ComparisonPage({
           .eq('campaign_id', c.id)
           .eq('status', 'active')
         if (countError) {
-          console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
+          logError('api', `campagne ${c.id}`, `comptage rendez-vous : ${countError.message}`)
         }
         return count ?? 0
       })

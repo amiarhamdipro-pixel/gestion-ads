@@ -9,6 +9,7 @@ import {
   resolveDateRange,
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
+import { logError } from '@/lib/logger'
 import OverviewSection from './OverviewSection'
 import OverviewDailyChart, { type DailyPoint } from './OverviewDailyChart'
 import KpiCard from './KpiCard'
@@ -343,7 +344,7 @@ export default async function DashboardPage({
           .eq('campaign_id', c.id)
           .eq('status', 'active')
         if (countError) {
-          console.error(`Échec comptage rendez-vous campagne ${c.id} : ${countError.message}`)
+          logError('api', `campagne ${c.id}`, `comptage rendez-vous : ${countError.message}`)
         }
         return count ?? 0
       })
