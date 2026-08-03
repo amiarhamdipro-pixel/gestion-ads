@@ -11,19 +11,14 @@ import { surfaceAlt } from './format'
 // profile.client_id — ce layout ne fournit que ce qui sert au chrome
 // (identité client/rôle, dernière synchronisation).
 //
-// Sidebar mobile/tablette (<=1024px) : bascule en tiroir CSS (case à cocher
-// masquée pilotant un sélecteur général frère `~`) — aucune dépendance
-// ajoutée. La case reste l'état source pour le CSS mais est exclue du tabindex
-// (tabIndex={-1}, en plus de aria-hidden) : ce n'est plus qu'un détail
-// d'implémentation invisible pour le clavier/lecteur d'écran. Les vrais
-// déclencheurs accessibles (bouton hamburger dans Header.tsx, bouton fermer
-// dans Sidebar.tsx) sont de vrais <button> qui appellent .click() sur cette
-// case pour la faire basculer, sans dupliquer la logique CSS existante. Le
-// tiroir et le fond assombri démarrent à top: 0 (pas une hauteur de header
-// codée en dur : sur mobile le header s'empile sur plusieurs lignes et sa
-// hauteur varie) ; le header reste visible au-dessus grâce à son z-index
-// supérieur, qui le fait simplement recouvrir visuellement le haut du
-// tiroir/fond.
+// Sidebar mobile/tablette (<=1024px) : bascule en tiroir CSS piloté par une
+// classe (.amerys-sidebar--open), elle-même dérivée de l'état React partagé
+// entre Header.tsx et Sidebar.tsx (voir subscribeMobileMenu dans format.ts) —
+// aucune dépendance ajoutée. Le tiroir et le fond assombri passent au-dessus
+// du header (z-index) plutôt que de réserver un padding-top calé sur sa
+// hauteur supposée : pour un compte admin, le header s'empile sur plus de
+// lignes que prévu et recouvrait/interceptait alors les clics destinés au
+// bouton fermer et aux liens de la sidebar (bug constaté en production).
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
 
@@ -87,47 +82,38 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div style={{ minHeight: '100vh', background: surfaceAlt, fontFamily: 'sans-serif' }}>
       <style>{`
-        .amerys-menu-input { position: absolute; opacity: 0; pointer-events: none; }
         .amerys-menu-label { display: none; }
         .amerys-sidebar-close { display: none; }
-        .amerys-backdrop { display: none; }
         .amerys-sidebar { padding-top: 22px; }
 
         @media (max-width: 1024px) {
           .amerys-menu-label { display: inline-flex; }
-          .amerys-sidebar-close { display: inline-flex; }
+          .amerys-sidebar--open .amerys-sidebar-close { display: inline-flex; }
           .amerys-sidebar {
             position: fixed;
             top: 0;
             left: 0;
             bottom: 0;
-            z-index: 45;
-            padding-top: 84px;
+            z-index: 70;
+            padding-top: 20px;
             transform: translateX(-100%);
             transition: transform 0.22s ease;
             box-shadow: 10px 0 30px rgba(15, 16, 30, 0.14);
           }
-          .amerys-menu-input:checked ~ .amerys-body .amerys-sidebar {
+          .amerys-sidebar--open {
             transform: translateX(0);
           }
-          .amerys-menu-input:checked ~ .amerys-body .amerys-backdrop {
-            display: block;
+          .amerys-backdrop {
             position: fixed;
             inset: 0;
             background: rgba(15, 16, 30, 0.42);
-            z-index: 44;
+            z-index: 65;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
           }
         }
-
-        /* Header sur plusieurs lignes en dessous de ~640px (client/rôle/sync
-           s'empilent) : le tiroir a besoin de plus de marge en haut pour ne
-           pas démarrer sous le header, plus haut à cette largeur. */
-        @media (max-width: 640px) {
-          .amerys-sidebar { padding-top: 224px; }
-        }
       `}</style>
-
-      <input type="checkbox" id="amerys-menu" className="amerys-menu-input" aria-hidden="true" tabIndex={-1} />
 
       <Header
         clientName={clientName}
@@ -138,7 +124,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       />
 
       <div className="amerys-body" style={{ display: 'flex', alignItems: 'flex-start' }}>
-        <label htmlFor="amerys-menu" className="amerys-backdrop" aria-hidden="true" />
         <Suspense fallback={null}>
           <Sidebar
             userName={profile?.full_name ?? user.email ?? 'Utilisateur'}

@@ -7,8 +7,9 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { useSyncExternalStore } from 'react'
 import { logout } from './actions'
-import { accent, ink, line, muted, surface } from './format'
+import { accent, getMobileMenuOpen, ink, line, muted, setMobileMenuOpen, subscribeMobileMenu, surface } from './format'
 import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, UserIcon } from './icons'
 
 function initials(name: string): string {
@@ -31,32 +32,24 @@ export default function Sidebar({
   // entre les pages : la query string est l'état partagé, aucune duplication.
   const query = useSearchParams().toString()
 
+  const menuOpen = useSyncExternalStore(subscribeMobileMenu, getMobileMenuOpen, () => false)
+
   const nav = [
     { label: "Vue d'ensemble", href: '/dashboard', icon: HomeIcon },
     { label: 'Comparaison', href: '/dashboard/comparison', icon: CompareIcon },
     ...(isAdmin ? [{ label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon }] : []),
   ]
 
-  // Ferme toujours, ne bascule jamais : contrairement au bouton hamburger
-  // (Header.tsx, un vrai toggle), ce bouton et les liens de nav promettent
-  // "fermer" — un .click() inconditionnel sur la case à cocher la
-  // rouvrirait si jamais elle était déjà décochée (ex. focus clavier sur ce
-  // bouton alors que le tiroir est fermé, hors écran mais toujours dans le
-  // DOM). Seule source de vérité : la case #amerys-menu (voir layout.tsx) ;
-  // .click() reste le seul moyen de la faire basculer en générant le même
-  // événement 'change' natif que Header.tsx écoute pour synchroniser
-  // aria-expanded, sans dupliquer cette logique ici.
   function closeMenu() {
-    const checkbox = document.getElementById('amerys-menu') as HTMLInputElement | null
-    if (checkbox?.checked) {
-      checkbox.click()
-    }
+    setMobileMenuOpen(false)
   }
 
   return (
+    <>
+    {menuOpen ? <div className="amerys-backdrop" aria-hidden="true" onClick={closeMenu} /> : null}
     <aside
       id="amerys-sidebar-nav"
-      className="amerys-sidebar"
+      className={menuOpen ? 'amerys-sidebar amerys-sidebar--open' : 'amerys-sidebar'}
       style={{
         width: 220,
         flexShrink: 0,
@@ -69,9 +62,9 @@ export default function Sidebar({
         paddingRight: 14,
         paddingBottom: 22,
         // paddingTop volontairement absent d'ici : piloté par la classe
-        // .amerys-sidebar (layout.tsx) pour pouvoir varier selon la hauteur
-        // réelle du header (une ligne sur tablette, plusieurs sur mobile) —
-        // un style inline ne pourrait jamais être surchargé par une media query.
+        // .amerys-sidebar (layout.tsx), seule à varier selon le breakpoint
+        // (desktop vs tiroir mobile) — un style inline ne pourrait jamais
+        // être surchargé par une media query.
       }}
     >
       <button
@@ -81,7 +74,6 @@ export default function Sidebar({
         aria-label="Fermer le menu"
         style={{
           alignSelf: 'flex-end',
-          display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           width: 30,
@@ -194,5 +186,6 @@ export default function Sidebar({
         </details>
       </div>
     </aside>
+    </>
   )
 }

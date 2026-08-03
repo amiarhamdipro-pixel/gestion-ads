@@ -74,11 +74,47 @@ export function formatPeriod(startDate: string | null, endDate: string | null): 
 
 export function formatDateTime(iso: string | null, fallback = 'Aucune synchronisation'): string {
   if (!iso) return fallback
+  // timeZone fixe : sans elle, Intl utilise le fuseau du runtime, qui diffère
+  // entre le rendu serveur (UTC sur l'hébergeur) et le navigateur du client
+  // (Europe/Paris) — l'heure affichée changeait selon qui la rendait, ce qui
+  // déclenchait une erreur d'hydratation React (#418) sur le header et
+  // interrompait l'accroche des gestionnaires de clic du menu mobile juste
+  // après hydratation.
   const formatter = new Intl.DateTimeFormat('fr-FR', {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Europe/Paris',
   })
   return formatter.format(new Date(iso))
+}
+
+// --- État partagé du tiroir mobile (Header.tsx = déclencheur, Sidebar.tsx =
+// contenu/fermeture) ---
+// Remplace l'ancien mécanisme "case à cocher cachée + sélecteur CSS `~`" :
+// en production, pour un compte admin, le header s'empile sur plus de lignes
+// que l'espacement fixe supposé par la sidebar (padding-top codé en dur), si
+// bien que le header (z-index supérieur) recouvrait et interceptait les clics
+// destinés au bouton fermer/aux liens de la sidebar — le menu semblait ne
+// jamais se refermer. useSyncExternalStore donne une seule source de vérité
+// simple, sans dépendre du DOM (getElementById/.click()) ni d'une hauteur de
+// header supposée.
+type MobileMenuListener = () => void
+let mobileMenuOpen = false
+const mobileMenuListeners = new Set<MobileMenuListener>()
+
+export function getMobileMenuOpen(): boolean {
+  return mobileMenuOpen
+}
+
+export function setMobileMenuOpen(open: boolean): void {
+  if (mobileMenuOpen === open) return
+  mobileMenuOpen = open
+  mobileMenuListeners.forEach((listener) => listener())
+}
+
+export function subscribeMobileMenu(listener: MobileMenuListener): () => void {
+  mobileMenuListeners.add(listener)
+  return () => mobileMenuListeners.delete(listener)
 }

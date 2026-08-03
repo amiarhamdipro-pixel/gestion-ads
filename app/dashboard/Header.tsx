@@ -4,11 +4,20 @@
 // Purement présentationnel : toutes les données sont chargées par
 // app/dashboard/layout.tsx, aucune requête ici. 'use client' uniquement pour
 // piloter le bouton hamburger (état ouvert/fermé exposé via aria-expanded,
-// synchronisé sur la case à cocher #amerys-menu qui reste la seule source de
-// vérité pour le CSS du tiroir — voir layout.tsx).
-import { Suspense, useEffect, useState } from 'react'
+// source unique partagée avec Sidebar.tsx — voir subscribeMobileMenu dans
+// format.ts).
+import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import Image from 'next/image'
-import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
+import {
+  formatDateTime,
+  getMobileMenuOpen,
+  headerBg,
+  onDark,
+  onDarkLine,
+  onDarkMuted,
+  setMobileMenuOpen,
+  subscribeMobileMenu,
+} from './format'
 import { ClockIcon, CrownIcon, UserIcon } from './icons'
 import SyncButton from './SyncButton'
 import DashboardDateFilter from './DashboardDateFilter'
@@ -44,19 +53,18 @@ export default function Header({
   lastSyncAt: string | null
   lastCalendlyModifiedAt: string | null
 }) {
-  const [menuOpen, setMenuOpen] = useState(false)
+  const menuOpen = useSyncExternalStore(subscribeMobileMenu, getMobileMenuOpen, () => false)
 
   useEffect(() => {
-    const checkbox = document.getElementById('amerys-menu') as HTMLInputElement | null
-    if (!checkbox) return
-    const sync = () => setMenuOpen(checkbox.checked)
-    sync()
-    checkbox.addEventListener('change', sync)
-    return () => checkbox.removeEventListener('change', sync)
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMobileMenuOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   function toggleMenu() {
-    document.getElementById('amerys-menu')?.click()
+    setMobileMenuOpen(!menuOpen)
   }
 
   return (
@@ -80,7 +88,6 @@ export default function Header({
             aria-expanded={menuOpen}
             aria-controls="amerys-sidebar-nav"
             style={{
-              display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               width: 38,
