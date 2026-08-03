@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import UserCreateForm from './UserCreateForm'
 import UserRowActions from './UserRowActions'
-import { faint, formatDateTime, green, line, muted, radius, red, softBg, surface, surfaceAlt } from '../../format'
+import { formatDateTime, green, ink, line, muted, radius, red, softBg, surface, surfaceAlt } from '../../format'
 
 // Page admin uniquement : accès direct par URL sans le rôle admin renvoie
 // vers /dashboard (redirect(), même garde que les pages non authentifiées).
@@ -102,7 +102,7 @@ export default async function AdminUsersPage() {
                       fontWeight: 700,
                       letterSpacing: '.04em',
                       textTransform: 'uppercase',
-                      color: faint,
+                      color: muted,
                       background: surfaceAlt,
                       whiteSpace: 'nowrap',
                     }}
@@ -125,7 +125,10 @@ export default async function AdminUsersPage() {
                         padding: '3px 9px',
                         borderRadius: 999,
                         fontWeight: 600,
-                        color: row.isBanned ? red : green,
+                        // color: ink, pas red/green — sur leur propre fond
+                        // pâle (softBg), red/green tombe autour de 2-3:1 de
+                        // contraste ; ink y reste très lisible (~17:1).
+                        color: ink,
                         background: row.isBanned ? softBg(red, 0.12) : softBg(green, 0.12),
                       }}
                     >
@@ -159,7 +162,7 @@ export default async function AdminUsersPage() {
                   fontWeight: 600,
                   padding: '3px 9px',
                   borderRadius: 999,
-                  color: row.isBanned ? red : green,
+                  color: ink,
                   background: row.isBanned ? softBg(red, 0.12) : softBg(green, 0.12),
                 }}
               >

@@ -5,7 +5,7 @@ import {
   appointmentsPerDay,
   campaignDurationDays,
   costPerMetaPixelLead,
-  hookRatePlay,
+  hookRate,
   isDateRangePreset,
   realAppointments,
   realCostPerAppointment,
@@ -13,7 +13,7 @@ import {
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import { logError } from '@/lib/logger'
-import { accent, faint, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
+import { accent, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import EmptyPeriodState from '../EmptyPeriodState'
 import VideoRanking, { type RankedVideo } from './VideoRanking'
 
@@ -49,7 +49,10 @@ function TopBadge() {
         fontWeight: 700,
         letterSpacing: '.03em',
         textTransform: 'uppercase',
-        color: green,
+        // color: ink, pas green — green sur son propre fond pâle (softBg)
+        // tombe à ~2:1 de contraste, illisible ; ink sur ce même fond reste
+        // proche du contraste ink/blanc (~17:1), fond coloré conservé.
+        color: ink,
         background: softBg(green, 0.14),
         borderRadius: 999,
         padding: '2px 7px',
@@ -84,7 +87,7 @@ async function computeRankedVideos(
 
   const { data: videoData } = await supabase
     .from('videos')
-    .select('audience_id, meta_ad_id, name, impressions, video_plays')
+    .select('audience_id, meta_ad_id, name, impressions, video_plays_3s')
     .in(
       'audience_id',
       audiences.map((a) => a.id)
@@ -101,7 +104,7 @@ async function computeRankedVideos(
     audienceType: 'barbier' | 'coiffeur'
     campaignNumbers: Set<number>
     totalImpressions: number
-    totalPlays: number
+    totalPlays3s: number
     totalSpend: number
     totalLeads: number
   }
@@ -117,7 +120,7 @@ async function computeRankedVideos(
 
     if (existing) {
       existing.totalImpressions += video.impressions
-      existing.totalPlays += video.video_plays
+      existing.totalPlays3s += video.video_plays_3s
       existing.totalSpend += audience.meta_spend
       existing.totalLeads += audience.meta_pixel_leads
       if (campaignNumber !== undefined) existing.campaignNumbers.add(campaignNumber)
@@ -128,7 +131,7 @@ async function computeRankedVideos(
         audienceType: audience.audience_type,
         campaignNumbers: new Set(campaignNumber !== undefined ? [campaignNumber] : []),
         totalImpressions: video.impressions,
-        totalPlays: video.video_plays,
+        totalPlays3s: video.video_plays_3s,
         totalSpend: audience.meta_spend,
         totalLeads: audience.meta_pixel_leads,
       })
@@ -141,7 +144,7 @@ async function computeRankedVideos(
     campaignCount: g.campaignNumbers.size,
     audienceType: g.audienceType,
     costPerLead: costPerMetaPixelLead(g.totalSpend, g.totalLeads),
-    hookPlay: hookRatePlay(g.totalPlays, g.totalImpressions),
+    hookPlay: hookRate(g.totalPlays3s, g.totalImpressions),
   }))
 }
 
@@ -180,11 +183,15 @@ export default async function ComparisonPage({
   // ─── Période active : RDV/dépensé/coût-RDV exacts issus de
   // campaign_daily_stats — jamais une estimation depuis les totaux campagne ──
   if (resolvedRange) {
-    const { data: campaignMeta, error: campaignMetaError } = await supabase
+    const { data: campaignMetaRaw, error: campaignMetaError } = await supabase
       .from('campaigns')
-      .select('id, campaign_number')
+      .select('id, campaign_number, status')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
+
+    // Une campagne encore ACTIVE sur Meta n'apparaît qu'une fois clôturée
+    // (voir aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx).
+    const campaignMeta = (campaignMetaRaw ?? []).filter((c) => c.status !== 'ACTIVE')
 
     if (campaignMetaError) {
       return (
@@ -283,7 +290,7 @@ export default async function ComparisonPage({
 
         <div style={{ marginTop: 30, marginBottom: 16 }}>
           <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
-          <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
+          <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
             La meilleure valeur de chaque colonne comparable est mise en avant
           </p>
         </div>
@@ -303,7 +310,7 @@ export default async function ComparisonPage({
                         fontWeight: 700,
                         letterSpacing: '.04em',
                         textTransform: 'uppercase',
-                        color: faint,
+                        color: muted,
                         background: surfaceAlt,
                         whiteSpace: 'nowrap',
                       }}
@@ -336,7 +343,7 @@ export default async function ComparisonPage({
                         {formatCost(row.realCostPerAppt)}
                         {isBestRealCostPerAppointment ? <TopBadge /> : null}
                       </td>
-                      <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: faint }}>{row.leads}</td>
+                      <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>{row.leads}</td>
                     </tr>
                   )
                 })}
@@ -358,7 +365,7 @@ export default async function ComparisonPage({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                       RDV / j
                     </div>
                     <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -367,7 +374,7 @@ export default async function ComparisonPage({
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                       Dépensé
                     </div>
                     <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatEur(row.spend)} €</div>
@@ -385,7 +392,7 @@ export default async function ComparisonPage({
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                       Coût / RDV réel
                     </div>
                     <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -393,7 +400,7 @@ export default async function ComparisonPage({
                       {isBestRealCostPerAppointment ? <TopBadge /> : null}
                     </div>
                   </div>
-                  <span style={{ color: faint, fontSize: 12.5 }}>{row.leads} leads Meta</span>
+                  <span style={{ color: muted, fontSize: 12.5 }}>{row.leads} leads Meta</span>
                 </div>
               </div>
             )
@@ -401,7 +408,7 @@ export default async function ComparisonPage({
         </div>
 
         <div style={{ marginTop: 32 }}>
-          <p style={{ color: faint, fontSize: 12.5, marginBottom: 10 }}>
+          <p style={{ color: muted, fontSize: 12.5, marginBottom: 10 }}>
             Classement des vidéos : toutes périodes confondues (pas de détail journalier par audience/vidéo).
           </p>
           <VideoRanking videos={rankedVideos} />
@@ -416,14 +423,18 @@ export default async function ComparisonPage({
 
   const { data: campaignData, error: campaignError } = await supabase
     .from('campaigns')
-    .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
+    .select(
+      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, status'
+    )
     .eq('client_id', profile.client_id)
     .order('campaign_number', { ascending: true })
 
   if (campaignError) {
     loadError = campaignError.message
   } else {
-    const loadedCampaigns = campaignData ?? []
+    // Une campagne encore ACTIVE sur Meta n'apparaît qu'une fois clôturée
+    // (voir aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx).
+    const loadedCampaigns = (campaignData ?? []).filter((c) => c.status !== 'ACTIVE')
     // RDV réels par campagne : comptés directement dans appointments
     // (status='active', campaign_id rattaché, client_id revérifié), pas
     // depuis campaigns.calendly_appointments qui reste à 0 par défaut
@@ -496,7 +507,7 @@ export default async function ComparisonPage({
 
           <div style={{ marginTop: 30, marginBottom: 16 }}>
             <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
-            <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
+            <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
               La meilleure valeur de chaque colonne comparable est mise en avant
             </p>
           </div>
@@ -518,7 +529,7 @@ export default async function ComparisonPage({
                           fontWeight: 700,
                           letterSpacing: '.04em',
                           textTransform: 'uppercase',
-                          color: faint,
+                          color: muted,
                           background: surfaceAlt,
                           whiteSpace: 'nowrap',
                         }}
@@ -554,7 +565,7 @@ export default async function ComparisonPage({
                           {formatCost(row.realCostPerAppt)}
                           {isBestRealCostPerAppointment ? <TopBadge /> : null}
                         </td>
-                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: faint }}>
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>
                           {row.campaign.meta_pixel_leads}
                         </td>
                       </tr>
@@ -583,7 +594,7 @@ export default async function ComparisonPage({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                         RDV / j
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -592,7 +603,7 @@ export default async function ComparisonPage({
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                         Dépensé
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatEur(row.campaign.meta_spend)} €</div>
@@ -610,7 +621,7 @@ export default async function ComparisonPage({
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                         Coût / RDV réel
                       </div>
                       <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -618,7 +629,7 @@ export default async function ComparisonPage({
                         {isBestRealCostPerAppointment ? <TopBadge /> : null}
                       </div>
                     </div>
-                    <span style={{ color: faint, fontSize: 12.5 }}>{row.campaign.meta_pixel_leads} leads Meta</span>
+                    <span style={{ color: muted, fontSize: 12.5 }}>{row.campaign.meta_pixel_leads} leads Meta</span>
                   </div>
                 </div>
               )

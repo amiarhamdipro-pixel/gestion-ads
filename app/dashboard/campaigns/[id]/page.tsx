@@ -5,7 +5,7 @@ import { logError } from '@/lib/logger'
 import {
   campaignDurationDays,
   costPerMetaPixelLead,
-  hookRateThruplay,
+  hookRate,
   isDateRangePreset,
   parisDateFromInstant,
   realAppointments,
@@ -142,6 +142,16 @@ export default async function CampaignDetailPage({
     notFound()
   }
 
+  // Une campagne encore ACTIVE sur Meta reste en cours de diffusion : ses
+  // chiffres ne sont pas définitifs, sa page détail n'est donc pas
+  // accessible tant qu'elle n'est pas clôturée (même règle que les listes,
+  // voir app/dashboard/page.tsx et comparison/page.tsx — ici appliquée à
+  // l'accès direct par URL, la campagne n'apparaissant déjà plus dans aucun
+  // lien qui y mènerait).
+  if (campaign.status === 'ACTIVE') {
+    notFound()
+  }
+
   // RDV réels rattachés à cette campagne : lus directement dans appointments
   // (status='active'), pas depuis campaigns.calendly_appointments qui reste
   // à 0 par défaut (jamais écrit par la synchro). Une seule requête sert à
@@ -196,7 +206,7 @@ export default async function CampaignDetailPage({
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, name, impressions, video_plays, thruplays, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
+            'id, audience_id, name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
@@ -263,7 +273,7 @@ export default async function CampaignDetailPage({
         </Link>
         <div>
           <div
-            style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.09em', textTransform: 'uppercase', color: faint }}
+            style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.09em', textTransform: 'uppercase', color: muted }}
           >
             Détail campagne
           </div>
@@ -445,11 +455,11 @@ export default async function CampaignDetailPage({
         <h2 style={{ fontWeight: 700, fontSize: 17 }}>
           Barbier vs Coiffeur
           {resolvedRange ? (
-            <span style={{ fontWeight: 600, fontSize: 12.5, color: faint, marginLeft: 8 }}>(total campagne)</span>
+            <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
           ) : null}
         </h2>
         {resolvedRange ? (
-          <p style={{ color: faint, fontSize: 12.5, marginTop: 2 }}>
+          <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
             Pas de détail journalier par audience/vidéo — ces chiffres portent sur toute la durée de la campagne,
             pas sur la période sélectionnée.
           </p>
@@ -478,8 +488,8 @@ export default async function CampaignDetailPage({
               const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
               const isBestCostPerLead = bestCostPerLead !== null && audienceCostPerLead === bestCostPerLead
 
-              const hookThru = video ? hookRateThruplay(video.thruplays, video.impressions) : null
-              const retention = video ? retentionRate(video.video_p100, video.video_p25) : null
+              const hook = video ? hookRate(video.video_plays_3s, video.impressions) : null
+              const retention = video ? retentionRate(video.video_p100, video.video_plays_3s) : null
 
               return (
                 <div
@@ -532,7 +542,11 @@ export default async function CampaignDetailPage({
                               padding: '3px 9px',
                               borderRadius: 999,
                               background: green,
-                              color: onDark,
+                              // color: ink, pas onDark (blanc) — blanc sur
+                              // vert plein ne passe pas un contraste
+                              // suffisant (~2,5:1) ; ink y reste très lisible
+                              // (~7:1).
+                              color: ink,
                             }}
                           >
                             Meilleur coût/lead
@@ -614,8 +628,8 @@ export default async function CampaignDetailPage({
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 13 }}>
                       <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hookThru)}</div>
-                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche (thruplay)</div>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hook)}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche</div>
                       </div>
                       <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
                         <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(retention)}</div>

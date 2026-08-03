@@ -7,7 +7,7 @@
 
 import { useActionState } from 'react'
 import { deleteUser, resetUserPassword, toggleUserBan, type UserActionState } from './actions'
-import { faint, green, line, red } from '@/app/dashboard/format'
+import { green, line, muted, red } from '@/app/dashboard/format'
 
 const initialState: UserActionState = { status: 'idle' }
 
@@ -39,7 +39,7 @@ export default function UserRowActions({
 
   if (isSelf) {
     return (
-      <span style={{ fontSize: 11.5, color: faint }} title="Actions indisponibles sur votre propre compte">
+      <span style={{ fontSize: 11.5, color: muted }} title="Actions indisponibles sur votre propre compte">
         —
       </span>
     )

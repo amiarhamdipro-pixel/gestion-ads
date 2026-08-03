@@ -57,19 +57,30 @@ export function metaPixelLeadsPerDay(metaPixelLeads: number, durationDays: numbe
   return metaPixelLeads / durationDays
 }
 
-export function hookRatePlay(videoPlays: number, impressions: number): number | null {
+// Taux d'accroche ("Hook Rate") : formule Meta elle-même (vues 3 secondes ÷
+// impressions) — videoPlays3s doit venir de videos.video_plays_3s, dérivé de
+// l'action Meta "video_view" (vérifié en conditions réelles, campagne
+// témoin n°20 : ~15/25 % calculés pour ~18/30 % Meta, écart proportionnel
+// constant sur les deux audiences — cohérent avec une fenêtre de rapport
+// légèrement différente entre l'instantané Meta de référence et cette
+// synchro, pas une erreur de formule). Jamais video_plays
+// (video_play_actions, un décompte différent qui ne reproduit pas les
+// valeurs Meta).
+export function hookRate(videoPlays3s: number, impressions: number): number | null {
   if (impressions <= 0) return null
-  return videoPlays / impressions
+  return videoPlays3s / impressions
 }
 
-export function hookRateThruplay(thruplays: number, impressions: number): number | null {
-  if (impressions <= 0) return null
-  return thruplays / impressions
-}
-
-export function retentionRate(videoP100: number, videoP25: number): number | null {
-  if (videoP25 <= 0) return null
-  return videoP100 / videoP25
+// Rétention ("Hold Rate") : formule Meta elle-même (vues 100 % ÷ vues 3
+// secondes) — PAS ThruPlays ÷ vues 3 secondes (confondu un temps : donnait
+// ~24-30 % au lieu des ~3,4/5,6 % Meta réels, un écart d'un facteur ~5-7 qui
+// ne pouvait pas être une simple dérive temporelle). video_p100 vérifié en
+// conditions réelles sur la campagne témoin n°20 : 5,52 % et 3,51 % calculés
+// pour 5,6 % et 3,4 % Meta — correspondance quasi exacte sur les deux
+// audiences.
+export function retentionRate(videoP100: number, videoPlays3s: number): number | null {
+  if (videoPlays3s <= 0) return null
+  return videoP100 / videoPlays3s
 }
 
 // Fenêtre de campagne utilisée pour rattacher automatiquement un rendez-vous

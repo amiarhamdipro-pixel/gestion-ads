@@ -42,6 +42,15 @@ a {
   text-decoration: none;
 }
 
+/* Contrairement aux autres éléments, <button> n'hérite pas color par défaut
+   (couleur système côté navigateur) : tout bouton du dashboard qui ne fixe
+   pas sa propre couleur devenait quasi invisible en dark mode (texte
+   quasi-blanc du body sur un fond de bouton clair) — ex. bascules
+   Totaux/Par jour, Meilleur coût par lead/Meilleur taux d'accroche. */
+button {
+  color: inherit;
+}
+
 @media (prefers-color-scheme: dark) {
   html {
     color-scheme: dark;

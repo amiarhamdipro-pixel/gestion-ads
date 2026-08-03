@@ -111,6 +111,7 @@ export async function fetchAdSetAds(adSetId: string): Promise<MetaAd[]> {
 export async function fetchAdInsights(adId: string, datePreset = 'maximum'): Promise<MetaAdInsights | null> {
   const fields = [
     'impressions',
+    'actions',
     'video_play_actions',
     'video_thruplay_watched_actions',
     'video_avg_time_watched_actions',

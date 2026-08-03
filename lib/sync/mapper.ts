@@ -76,6 +76,14 @@ export function mapAdToVideoInsert(audienceId: string, ad: MetaAd, insights: Met
     name: ad.name,
     impressions: insights ? Number(insights.impressions ?? 0) : 0,
     video_plays: firstActionValue(insights?.video_play_actions),
+    // Vues 3 secondes : dénominateur du taux d'accroche ("Hook Rate") tel que
+    // Meta le calcule lui-même (vues 3s ÷ impressions) — distinct de
+    // video_plays ci-dessus (video_play_actions, un décompte de lectures non
+    // filtré à 3s) qui ne reproduit pas les valeurs affichées par Meta.
+    // Pas un champ insights dédié : Meta le renvoie dans actions, action_type
+    // "video_view" (video_3_sec_watched_actions n'existe pas côté API — erreur
+    // #100 confirmée en conditions réelles).
+    video_plays_3s: extractActionValue(insights?.actions, 'video_view'),
     thruplays: firstActionValue(insights?.video_thruplay_watched_actions),
     average_watch_time_seconds: firstActionValue(insights?.video_avg_time_watched_actions),
     video_p25: firstActionValue(insights?.video_p25_watched_actions),

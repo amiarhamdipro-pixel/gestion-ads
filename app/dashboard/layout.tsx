@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Header from './Header'
 import Sidebar from './Sidebar'
-import { surfaceAlt } from './format'
+import { ink, surfaceAlt } from './format'
 
 // Chrome applicatif partagé par toutes les pages /dashboard/* (MAQUETTE-UI.png :
 // header pleine largeur + sidebar). Chaque page continue de charger ses
@@ -80,10 +80,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const isAdmin = profile?.role === 'admin'
 
   return (
-    <div style={{ minHeight: '100vh', background: surfaceAlt, fontFamily: 'sans-serif' }}>
+    // color: ink fixe le texte par défaut de tout le chrome dashboard. Sans
+    // lui, les éléments qui ne fixent pas leur propre couleur (ex. les <h1>
+    // de titre de page) héritent de body { color: var(--foreground) }
+    // (app/globals.css), qui bascule en quasi-blanc sous
+    // @media (prefers-color-scheme: dark) — courant par défaut sur mobile —
+    // sur un fond clair (surfaceAlt) : texte quasi invisible.
+    <div style={{ minHeight: '100vh', background: surfaceAlt, color: ink, fontFamily: 'sans-serif' }}>
       <style>{`
         .amerys-menu-label { display: none; }
         .amerys-sidebar-close { display: none; }
+        .amerys-backdrop { display: none; }
         .amerys-sidebar { padding-top: 22px; }
 
         @media (max-width: 1024px) {
@@ -97,13 +104,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
             z-index: 70;
             padding-top: 20px;
             transform: translateX(-100%);
-            transition: transform 0.22s ease;
+            /* cubic-bezier "standard" (Material) : décélération franche en
+               fin de course, perçue comme plus naturelle qu'un ease linéaire
+               pour un tiroir qui glisse depuis le bord de l'écran. */
+            transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 10px 0 30px rgba(15, 16, 30, 0.14);
           }
           .amerys-sidebar--open {
             transform: translateX(0);
           }
+          /* Toujours monté (jamais démonté/remonté) pour permettre un fondu
+             — un simple mount/unmount React ne peut pas transitionner
+             l'opacité, il ne fait qu'apparaître/disparaître d'un coup.
+             pointer-events désactivé au repos : invisible, il ne doit
+             intercepter ni clic ni focus. */
           .amerys-backdrop {
+            display: block;
             position: fixed;
             inset: 0;
             background: rgba(15, 16, 30, 0.42);
@@ -111,6 +127,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
             border: 0;
             padding: 0;
             cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .amerys-backdrop--visible {
+            opacity: 1;
+            pointer-events: auto;
           }
         }
       `}</style>

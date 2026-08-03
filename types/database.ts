@@ -54,6 +54,7 @@ export type Video = {
   name: string
   impressions: number
   video_plays: number
+  video_plays_3s: number
   thruplays: number
   average_watch_time_seconds: number
   video_p25: number

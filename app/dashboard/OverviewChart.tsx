@@ -5,7 +5,7 @@
 // main (pas de dépendance graphique dans le projet).
 
 import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
-import { faint, indigo, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
+import { indigo, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
 import { InfoIcon } from './icons'
 
 export type OverviewMode = 'total' | 'day'
@@ -92,7 +92,7 @@ export default function OverviewChart({
         <h2 style={{ fontWeight: 700, fontSize: 15.5, color: ink, margin: 0 }}>
           Évolution des rendez-vous et du dépensé
         </h2>
-        <InfoIcon size={14} style={{ color: faint }} />
+        <InfoIcon size={14} style={{ color: muted }} />
       </div>
       {modeToggle}
     </div>
@@ -148,7 +148,7 @@ export default function OverviewChart({
   return (
     <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
       {titleRow}
-      <p style={{ fontSize: 12, color: faint, margin: '2px 0 14px' }}>Par campagne (n° 1 à 20)</p>
+      <p style={{ fontSize: 12, color: muted, margin: '2px 0 14px' }}>Par campagne (n° 1 à 20)</p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 12.5, color: muted, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -180,10 +180,10 @@ export default function OverviewChart({
           return (
             <g key={lvl}>
               <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
-              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={faint}>
+              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={muted}>
                 {fmtSpendAxis(spendStep * lvl)} €
               </text>
-              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={faint}>
+              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={muted}>
                 {fmtAppointments(apptStep * lvl)}
               </text>
             </g>
@@ -229,7 +229,7 @@ export default function OverviewChart({
           </text>
         ))}
         {points.map((p, i) => (
-          <text key={`dur-${p.campaign_number}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={9} fill={faint}>
+          <text key={`dur-${p.campaign_number}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={9} fill={muted}>
             {p.durationLabel}
           </text>
         ))}

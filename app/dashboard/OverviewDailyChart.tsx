@@ -6,7 +6,7 @@
 // quotidienne ici, par construction. SVG fait main (pas de dépendance
 // graphique).
 
-import { faint, indigo, ink, line as lineColor, muted, surface, violet } from './format'
+import { indigo, ink, line as lineColor, muted, surface, violet } from './format'
 import { InfoIcon } from './icons'
 
 export type DailyPoint = { date: string; spend: number; appointments: number }
@@ -38,7 +38,7 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
   const titleRow = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
       <h2 style={{ fontWeight: 700, fontSize: 15.5, color: ink, margin: 0 }}>Évolution quotidienne sur la période</h2>
-      <InfoIcon size={14} style={{ color: faint }} />
+      <InfoIcon size={14} style={{ color: muted }} />
     </div>
   )
 
@@ -89,7 +89,7 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
   return (
     <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
       {titleRow}
-      <p style={{ fontSize: 12, color: faint, margin: '2px 0 14px' }}>
+      <p style={{ fontSize: 12, color: muted, margin: '2px 0 14px' }}>
         {points[0].date} → {points[points.length - 1].date}
       </p>
 
@@ -123,10 +123,10 @@ export default function OverviewDailyChart({ points }: { points: DailyPoint[] })
           return (
             <g key={lvl}>
               <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
-              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={faint}>
+              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={muted}>
                 {fmtSpendAxis(spendStep * lvl)} €
               </text>
-              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={faint}>
+              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={muted}>
                 {fmtAppointments(apptStep * lvl)}
               </text>
             </g>

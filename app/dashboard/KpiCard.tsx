@@ -1,4 +1,4 @@
-import { faint, ink, line, radius, surface } from './format'
+import { ink, line, muted, radius, surface } from './format'
 
 export default function KpiCard({
   icon,
@@ -37,13 +37,13 @@ export default function KpiCard({
           fontWeight: 700,
           letterSpacing: '.05em',
           textTransform: 'uppercase',
-          color: faint,
+          color: muted,
         }}
       >
         {label}
       </div>
       <div style={{ fontWeight: 700, fontSize: 23, marginTop: 3, color: ink }}>{value}</div>
-      {foot ? <div style={{ fontSize: 12, color: faint, marginTop: 8 }}>{foot}</div> : null}
+      {foot ? <div style={{ fontSize: 12, color: muted, marginTop: 8 }}>{foot}</div> : null}
     </div>
   )
 }

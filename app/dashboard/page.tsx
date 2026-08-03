@@ -17,7 +17,6 @@ import EmptyPeriodState from './EmptyPeriodState'
 import {
   accent,
   amber,
-  faint,
   formatCost,
   formatEur,
   formatPeriod,
@@ -136,11 +135,16 @@ export default async function DashboardPage({
 
     const { data: campaignMeta } = await supabase
       .from('campaigns')
-      .select('id, campaign_number')
+      .select('id, campaign_number, status')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
+    // Une campagne dont le statut Meta est ACTIVE reste en cours de
+    // diffusion : ses chiffres ne sont pas définitifs, elle ne doit donc
+    // apparaître nulle part tant qu'elle n'est pas clôturée (voir aussi
+    // comparison/page.tsx et campaigns/[id]/page.tsx, même règle).
     const campaignRows = (campaignMeta ?? [])
+      .filter((c) => c.status !== 'ACTIVE')
       .filter((c) => byCampaign.has(c.id))
       .map((c) => {
         const agg = byCampaign.get(c.id)!
@@ -222,7 +226,7 @@ export default async function DashboardPage({
                         fontWeight: 700,
                         letterSpacing: '.04em',
                         textTransform: 'uppercase',
-                        color: faint,
+                        color: muted,
                         background: surfaceAlt,
                         whiteSpace: 'nowrap',
                       }}
@@ -274,20 +278,20 @@ export default async function DashboardPage({
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
                 <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                     Dépensé
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatEur(row.spend)} €</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                     Rendez-vous
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{row.appointments}</div>
                 </div>
               </div>
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${line}` }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                   Coût / RDV réel
                 </div>
                 <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatCost(row.costPerAppt)}</div>
@@ -314,14 +318,18 @@ export default async function DashboardPage({
 
   const { data, error } = await supabase
     .from('campaigns')
-    .select('id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
+    .select(
+      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, status'
+    )
     .eq('client_id', profile.client_id)
     .order('campaign_number', { ascending: true })
 
   if (error) {
     campaignsError = error.message
   } else {
-    const loaded = data ?? []
+    // Une campagne encore ACTIVE sur Meta n'apparaît qu'une fois clôturée
+    // (voir aussi comparison/page.tsx et campaigns/[id]/page.tsx).
+    const loaded = (data ?? []).filter((c) => c.status !== 'ACTIVE')
     // RDV réels par campagne : comptés directement dans appointments
     // (status='active', campaign_id rattaché) plutôt que lus depuis
     // campaigns.calendly_appointments, qui reste à 0 par défaut (jamais

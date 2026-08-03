@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { accent, faint, ink, line, muted, radius, surface, surfaceAlt, violet } from '../format'
+import { accent, ink, line, muted, radius, surface, surfaceAlt, violet } from '../format'
 
 export type RankedVideo = {
   metaAdId: string
@@ -40,7 +40,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <h2 style={{ fontWeight: 700, fontSize: 17, margin: 0 }}>Classement des vidéos</h2>
-          <p style={{ color: faint, fontSize: 12.5, margin: '2px 0 0' }}>
+          <p style={{ color: muted, fontSize: 12.5, margin: '2px 0 0' }}>
             {videos.length} vidéo{videos.length > 1 ? 's' : ''} — une vidéo peut revenir sur plusieurs campagnes
           </p>
         </div>
@@ -89,7 +89,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                 padding: '13px 16px',
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: 17, color: i === 0 ? accent : faint, textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 17, color: i === 0 ? accent : muted, textAlign: 'center' }}>
                 {i + 1}
               </div>
               <div>
@@ -113,7 +113,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
 
           {unranked.length > 0 ? (
             <div style={{ marginTop: 6 }}>
-              <p style={{ color: faint, fontSize: 12, marginBottom: 8 }}>
+              <p style={{ color: muted, fontSize: 12, marginBottom: 8 }}>
                 {unranked.length} vidéo{unranked.length > 1 ? 's' : ''} non classable
                 {unranked.length > 1 ? 's' : ''} (métrique non calculable — division par zéro évitée) :
               </p>
@@ -132,14 +132,14 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                     marginBottom: 8,
                   }}
                 >
-                  <div style={{ textAlign: 'center', color: faint }}>—</div>
+                  <div style={{ textAlign: 'center', color: muted }}>—</div>
                   <div>
                     <b style={{ fontSize: 14, display: 'block', color: ink }}>{v.name}</b>
                     <span style={{ fontSize: 12, color: muted }}>
                       diffusée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
                     </span>
                   </div>
-                  <div style={{ textAlign: 'right', color: faint, fontSize: 12.5 }}>Non disponible</div>
+                  <div style={{ textAlign: 'right', color: muted, fontSize: 12.5 }}>Non disponible</div>
                 </div>
               ))}
             </div>

@@ -121,7 +121,7 @@ export default function Header({
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, color: onDark, letterSpacing: '.01em', lineHeight: 1.15 }}>
-              AMERYS ADS
+              AMERYS AGENCY – ADS
             </div>
             <div style={{ fontSize: 11.5, color: onDarkMuted, marginTop: 1 }}>Marketing Dashboard</div>
           </div>

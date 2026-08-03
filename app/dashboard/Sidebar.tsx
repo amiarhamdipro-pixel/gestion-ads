@@ -7,7 +7,7 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { logout } from './actions'
 import { accent, getMobileMenuOpen, ink, line, muted, setMobileMenuOpen, subscribeMobileMenu, surface } from './format'
 import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, UserIcon } from './icons'
@@ -33,6 +33,7 @@ export default function Sidebar({
   const query = useSearchParams().toString()
 
   const menuOpen = useSyncExternalStore(subscribeMobileMenu, getMobileMenuOpen, () => false)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   const nav = [
     { label: "Vue d'ensemble", href: '/dashboard', icon: HomeIcon },
@@ -44,9 +45,30 @@ export default function Sidebar({
     setMobileMenuOpen(false)
   }
 
+  // Ouverture plus naturelle : le focus clavier suit le tiroir (sur le
+  // bouton fermer) au lieu de rester sur le hamburger désormais recouvert —
+  // sans ça, Tab depuis un lecteur d'écran/clavier continue de parcourir le
+  // contenu de la page sous le tiroir, invisible mais toujours dans le flux.
+  // Verrouille aussi le défilement de la page derrière le tiroir (comme tout
+  // tiroir mobile natif) — sans ça, la page défile "à travers" un tiroir
+  // censé être modal.
+  useEffect(() => {
+    if (!menuOpen) return
+    closeButtonRef.current?.focus()
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [menuOpen])
+
   return (
     <>
-    {menuOpen ? <div className="amerys-backdrop" aria-hidden="true" onClick={closeMenu} /> : null}
+    <div
+      className={menuOpen ? 'amerys-backdrop amerys-backdrop--visible' : 'amerys-backdrop'}
+      aria-hidden="true"
+      onClick={closeMenu}
+    />
     <aside
       id="amerys-sidebar-nav"
       className={menuOpen ? 'amerys-sidebar amerys-sidebar--open' : 'amerys-sidebar'}
@@ -68,6 +90,7 @@ export default function Sidebar({
       }}
     >
       <button
+        ref={closeButtonRef}
         type="button"
         onClick={closeMenu}
         className="amerys-sidebar-close"
@@ -76,9 +99,11 @@ export default function Sidebar({
           alignSelf: 'flex-end',
           alignItems: 'center',
           justifyContent: 'center',
-          width: 30,
-          height: 30,
-          borderRadius: 8,
+          // 40px : proche du seuil de 44px recommandé pour une cible tactile
+          // (bouton dédié fermeture, ouvert uniquement sur mobile/tablette).
+          width: 40,
+          height: 40,
+          borderRadius: 10,
           border: `1px solid ${line}`,
           background: 'transparent',
           padding: 0,
@@ -88,7 +113,7 @@ export default function Sidebar({
           marginBottom: 12,
         }}
       >
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 13 13" fill="none" aria-hidden="true">
           <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
         </svg>
       </button>
@@ -106,7 +131,10 @@ export default function Sidebar({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 11,
-                padding: '10px 12px',
+                // Cible tactile ≈44px (13px de padding vertical + texte/icône) :
+                // plus confortable au doigt qu'au pointeur souris, sans rien
+                // changer visuellement au-delà de la hauteur de la ligne.
+                padding: '13px 12px',
                 borderRadius: 10,
                 fontSize: 13.5,
                 fontWeight: active ? 600 : 500,

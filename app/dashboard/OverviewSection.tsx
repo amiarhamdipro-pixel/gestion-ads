@@ -12,13 +12,13 @@ import {
 } from '@/lib/calculations'
 import {
   accent,
-  faint,
   formatCost,
   formatEur,
   formatPct,
   formatPeriod,
   green,
   amber,
+  ink,
   red,
   line,
   muted,
@@ -44,11 +44,16 @@ type Campaign = {
 // Seuils de couleur du badge "Tracking" (part des RDV réels suivis par le
 // pixel Meta). Choix de présentation — pas une règle métier nouvelle : la
 // valeur elle-même (metaTrackingRate) est la même que le KPI "Tracking Meta".
+// color: ink, jamais la teinte elle-même : vert/ambre/rouge sur leur propre
+// fond pâle (softBg) tombe autour de 2:1 de contraste, illisible par
+// construction (texte et fond dérivés de la même teinte). ink sur un fond
+// aussi pâle reste proche du contraste ink/blanc (~17:1) — le badge garde
+// son fond coloré (signal visuel conservé), seul le texte devient lisible.
 function trackingTone(rate: number | null): { color: string; bg: string } | null {
   if (rate === null) return null
-  if (rate >= 0.95) return { color: green, bg: softBg(green, 0.14) }
-  if (rate >= 0.8) return { color: amber, bg: softBg(amber, 0.16) }
-  return { color: red, bg: softBg(red, 0.14) }
+  if (rate >= 0.95) return { color: ink, bg: softBg(green, 0.14) }
+  if (rate >= 0.8) return { color: ink, bg: softBg(amber, 0.16) }
+  return { color: ink, bg: softBg(red, 0.14) }
 }
 
 export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Campaign[]; isAdmin: boolean }) {
@@ -120,7 +125,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                       fontWeight: 700,
                       letterSpacing: '.04em',
                       textTransform: 'uppercase',
-                      color: faint,
+                      color: muted,
                       background: surfaceAlt,
                       whiteSpace: 'nowrap',
                     }}
@@ -152,7 +157,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                   </td>
 
                   {durationUnavailable ? (
-                    <td colSpan={2} style={{ padding: '14px 16px', fontSize: 12.5, color: faint, textAlign: 'right' }}>
+                    <td colSpan={2} style={{ padding: '14px 16px', fontSize: 12.5, color: muted, textAlign: 'right' }}>
                       Durée non disponible
                     </td>
                   ) : (
@@ -190,7 +195,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                           {formatPct(trackingRate)}
                         </span>
                       ) : (
-                        <span style={{ color: faint, fontSize: 12.5 }}>—</span>
+                        <span style={{ color: muted, fontSize: 12.5 }}>—</span>
                       )}
                     </td>
                   ) : null}
@@ -220,11 +225,11 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
             ) : null}
 
             {durationUnavailable ? (
-              <p style={{ fontSize: 12.5, color: faint, marginTop: 12 }}>Durée non disponible</p>
+              <p style={{ fontSize: 12.5, color: muted, marginTop: 12 }}>Durée non disponible</p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
                 <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                     {mode === 'day' ? 'Dépensé / j' : 'Dépensé'}
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -232,7 +237,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                     {mode === 'day' ? 'RDV / j' : 'Rendez-vous'}
                   </div>
                   <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>
@@ -257,7 +262,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
               }}
             >
               <div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: faint }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                   Coût / RDV réel
                 </div>
                 <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{formatCost(costPerAppt)}</div>
@@ -277,7 +282,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                     {formatPct(trackingRate)}
                   </span>
                 ) : (
-                  <span style={{ color: faint, fontSize: 12.5 }}>Tracking —</span>
+                  <span style={{ color: muted, fontSize: 12.5 }}>Tracking —</span>
                 )
               ) : null}
             </div>

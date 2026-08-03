@@ -1,4 +1,4 @@
-import { faint, line, muted, radius, surface } from './format'
+import { line, muted, radius, surface } from './format'
 
 // État vide partagé quand le filtre de période n'a aucune ligne
 // campaign_daily_stats correspondante — jamais de KPI/graphique/tableau
@@ -15,7 +15,7 @@ export default function EmptyPeriodState() {
       }}
     >
       <p style={{ fontSize: 15, fontWeight: 600, color: muted, margin: 0 }}>Aucune donnée sur cette période.</p>
-      <p style={{ fontSize: 13, color: faint, marginTop: 6 }}>
+      <p style={{ fontSize: 13, color: muted, marginTop: 6 }}>
         Choisissez une autre période dans le filtre du header.
       </p>
     </div>

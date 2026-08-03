@@ -44,6 +44,12 @@ export type MetaActionValue = {
 
 export type MetaAdInsights = {
   impressions?: string
+  // "3 sec video views" (dénominateur du Hook Rate Meta) n'est pas un champ
+  // insights dédié — Meta le renvoie comme une action générique de type
+  // "video_view" dans le tableau actions (déjà utilisé ailleurs, ex. leads
+  // pixel). video_3_sec_watched_actions n'existe pas côté API (confirmé :
+  // Meta renvoie l'erreur #100 "not valid for fields param").
+  actions?: MetaAction[]
   video_play_actions?: MetaActionValue[]
   video_thruplay_watched_actions?: MetaActionValue[]
   video_avg_time_watched_actions?: MetaActionValue[]
