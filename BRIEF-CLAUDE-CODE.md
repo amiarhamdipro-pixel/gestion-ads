@@ -554,6 +554,38 @@ code a changé depuis) :
     rôle, graphique sans régression (aucun NaN/Infinity), état vide honnête
     du canal d'acquisition, bannière vidéo + badge meilleur coût/lead
     présents, aucune régression admin (sync, écart de tracking).
+- **Bouton admin unique « Synchroniser » remplaçant les deux boutons Meta/
+  Calendly séparés** (`SyncButton.tsx`, `app/api/admin/sync/all/route.ts`) :
+  un clic déclenche les 4 étapes déjà validées, dans cet ordre strict et sans
+  jamais les paralléliser — `syncAllCampaigns` (totaux Meta) →
+  `syncAllCampaignsDailyStats` (quotidien Meta) → `syncAppointments`
+  (rendez-vous Calendly + rattachement campagnes, jamais lancé avant la fin
+  des deux étapes Meta ci-dessus) → `syncCalendlyDailyStats` (quotidien
+  Calendly). Aucune fonction de synchro modifiée : ce fichier ne fait
+  qu'enchaîner les appels existants et construire un rapport. Un échec dur à
+  l'étape 1 (totaux Meta) interrompt tout le reste (Calendly jamais lancé) ;
+  un échec de l'étape 2 (quotidien Meta) n'interrompt PAS Calendly (le
+  rattachement par fenêtre ne dépend que de `campaigns.start_date/end_date`,
+  déjà écrites par l'étape 1) ; un échec dur à l'étape 3 (rendez-vous
+  Calendly) interrompt l'étape 4. Chaque étape déjà réussie reste dans le
+  rapport final même si une étape suivante échoue — jamais de succès global
+  affiché si une étape a réellement échoué (`report.ok`, calculé côté
+  serveur, ignore les rendez-vous en chevauchement — attendus, pas des
+  échecs). Réponse en NDJSON (une ligne JSON par évènement, aucune dépendance
+  ajoutée : `ReadableStream`/`TextEncoder` natifs) plutôt qu'un JSON unique :
+  seul moyen d'afficher une étape en cours (« Synchronisation Meta… » /
+  « Synchronisation Calendly… » / « Finalisation… ») qui reflète l'avancement
+  réel du serveur, jamais un minutage deviné côté client. Les deux anciennes
+  routes (`app/api/admin/sync/route.ts`, `.../calendly/route.ts`) restent
+  intactes pour diagnostic interne, mais ne sont plus exposées dans
+  l'interface (`SyncMetaButton.tsx`/`SyncCalendlyButton.tsx` supprimés).
+  Gating admin identique aux routes existantes (comparaison directe :
+  identique à l'octet près hors un commentaire). Validé en conditions
+  réelles : chemin d'échec dur à l'étape 1 déclenché deux fois pour de vraies
+  raisons (token Meta expiré, puis limite de débit Meta) — dans les deux cas,
+  Calendly n'a jamais été appelé, confirmé par les logs ; réponse readable
+  stream/NDJSON testée séparément avec un découpage d'octets pathologique (au
+  milieu d'une ligne JSON), parsing toujours correct.
 
 ## 6. Tâche immédiate
 

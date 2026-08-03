@@ -10,8 +10,7 @@ import { Suspense, useEffect, useState } from 'react'
 import Image from 'next/image'
 import { formatDateTime, headerBg, onDark, onDarkLine, onDarkMuted } from './format'
 import { ClockIcon, CrownIcon, UserIcon } from './icons'
-import SyncMetaButton from './SyncMetaButton'
-import SyncCalendlyButton from './SyncCalendlyButton'
+import SyncButton from './SyncButton'
 import DashboardDateFilter from './DashboardDateFilter'
 
 const roleLabel: Record<string, string> = {
@@ -135,8 +134,7 @@ export default function Header({
             </Suspense>
           ) : null}
 
-          {isAdmin ? <SyncMetaButton /> : null}
-          {isAdmin ? <SyncCalendlyButton /> : null}
+          {isAdmin ? <SyncButton /> : null}
 
           {isAdmin ? (
             <>
