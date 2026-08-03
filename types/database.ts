@@ -27,6 +27,12 @@ export type Campaign = {
   start_date: string | null
   end_date: string | null
   status: string | null
+  // État Meta (ci-dessus, status) vs état de publication dashboard
+  // (published) : deux notions indépendantes. published contrôle
+  // exclusivement la visibilité côté client (app/dashboard/*) ; jamais
+  // modifié automatiquement par la synchro (voir lib/sync/syncCampaign.ts),
+  // seul un admin le change (app/api/admin/campaigns/publish/route.ts).
+  published: boolean
   meta_spend: number
   meta_pixel_leads: number
   calendly_appointments: number
@@ -144,10 +150,12 @@ export interface Database {
       }
       campaigns: {
         Row: Campaign
-        // start_date/end_date/status (nullable) et calendly_appointments/
+        // start_date/end_date/status (nullable), calendly_appointments/
         // manual_appointments_adjustment (saisie manuelle, jamais dérivés de Meta)
-        // sont optionnels à l'insert : la synchro Meta ne doit jamais les écraser
-        // en les omettant du payload d'upsert (lib/sync/syncCampaign.ts).
+        // et published (décision admin, jamais dérivée de Meta) sont optionnels
+        // à l'insert : la synchro Meta ne doit jamais les écraser en les omettant
+        // du payload d'upsert (lib/sync/syncCampaign.ts) — la colonne published
+        // a un défaut false en base, appliqué uniquement à la création.
         Insert: Partial<
           Pick<
             Campaign,
@@ -157,6 +165,7 @@ export interface Database {
             | 'start_date'
             | 'end_date'
             | 'status'
+            | 'published'
             | 'calendly_appointments'
             | 'manual_appointments_adjustment'
           >
@@ -169,6 +178,7 @@ export interface Database {
             | 'start_date'
             | 'end_date'
             | 'status'
+            | 'published'
             | 'calendly_appointments'
             | 'manual_appointments_adjustment'
           >

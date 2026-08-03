@@ -10,6 +10,15 @@
 // (calendly_appointments, manual_appointments_adjustment) ne sont jamais
 // écrasés par cette fonction : ils sont omis du payload d'upsert campagne.
 //
+// published (état de publication dashboard, distinct du statut Meta ci-
+// dessous) suit exactement le même principe : jamais dans le payload
+// d'upsert. Sur une création (nouvelle campagne détectée), le défaut colonne
+// (false) s'applique automatiquement — invisible côté client tant qu'un
+// admin ne la publie pas (app/api/admin/campaigns/publish/route.ts). Sur une
+// campagne déjà connue, l'omission préserve la décision déjà prise par
+// l'admin, quel que soit le statut Meta renvoyé (ACTIVE/PAUSED/ARCHIVED) —
+// la synchro ne dépublie ni ne republie jamais automatiquement.
+//
 // end_date : l'attribut end_time de l'ad set lui-même n'est JAMAIS renvoyé
 // par Meta sur ce compte (vérifié en conditions réelles, 9/9 campagnes,
 // paused et active confondues — ce n'est pas une date programmée que les

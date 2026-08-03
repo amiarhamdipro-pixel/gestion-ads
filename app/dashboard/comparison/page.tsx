@@ -168,7 +168,8 @@ export default async function ComparisonPage({
     redirect('/login')
   }
 
-  const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', user.id).maybeSingle()
+  const { data: profile } = await supabase.from('profiles').select('client_id, role').eq('id', user.id).maybeSingle()
+  const isAdmin = profile?.role === 'admin'
 
   if (!profile?.client_id) {
     return (
@@ -185,13 +186,15 @@ export default async function ComparisonPage({
   if (resolvedRange) {
     const { data: campaignMetaRaw, error: campaignMetaError } = await supabase
       .from('campaigns')
-      .select('id, campaign_number, status')
+      .select('id, campaign_number, published')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
-    // Une campagne encore ACTIVE sur Meta n'apparaît qu'une fois clôturée
-    // (voir aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx).
-    const campaignMeta = (campaignMetaRaw ?? []).filter((c) => c.status !== 'ACTIVE')
+    // État de publication (indépendant du statut Meta) : le client ne voit
+    // que les campagnes published=true, décision exclusivement admin (voir
+    // aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx). L'admin voit
+    // tout, y compris les campagnes non encore publiées.
+    const campaignMeta = (campaignMetaRaw ?? []).filter((c) => isAdmin || c.published)
 
     if (campaignMetaError) {
       return (
@@ -424,7 +427,7 @@ export default async function ComparisonPage({
   const { data: campaignData, error: campaignError } = await supabase
     .from('campaigns')
     .select(
-      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, status'
+      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, published'
     )
     .eq('client_id', profile.client_id)
     .order('campaign_number', { ascending: true })
@@ -432,9 +435,11 @@ export default async function ComparisonPage({
   if (campaignError) {
     loadError = campaignError.message
   } else {
-    // Une campagne encore ACTIVE sur Meta n'apparaît qu'une fois clôturée
-    // (voir aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx).
-    const loadedCampaigns = (campaignData ?? []).filter((c) => c.status !== 'ACTIVE')
+    // État de publication (indépendant du statut Meta) : le client ne voit
+    // que les campagnes published=true, décision exclusivement admin (voir
+    // aussi app/dashboard/page.tsx et campaigns/[id]/page.tsx). L'admin voit
+    // tout, y compris les campagnes non encore publiées.
+    const loadedCampaigns = (campaignData ?? []).filter((c) => isAdmin || c.published)
     // RDV réels par campagne : comptés directement dans appointments
     // (status='active', campaign_id rattaché, client_id revérifié), pas
     // depuis campaigns.calendly_appointments qui reste à 0 par défaut

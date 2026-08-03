@@ -29,12 +29,14 @@ import {
 } from './format'
 import OverviewChart, { type OverviewMode } from './OverviewChart'
 import EndDateEditor from './EndDateEditor'
+import PublishToggle from './PublishToggle'
 
 type Campaign = {
   id: string
   campaign_number: number
   start_date: string | null
   end_date: string | null
+  published: boolean
   meta_spend: number
   meta_pixel_leads: number
   manual_appointments_adjustment: number
@@ -149,7 +151,10 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                       Campagne {campaign.campaign_number}
                     </Link>
                     {isAdmin ? (
-                      <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+                      <>
+                        <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+                        <PublishToggle campaignId={campaign.id} initialPublished={campaign.published} />
+                      </>
                     ) : null}
                   </td>
                   <td style={{ padding: '14px 16px', fontSize: 13, color: muted, whiteSpace: 'nowrap' }}>
@@ -221,7 +226,10 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
             </div>
             <div style={{ fontSize: 12.5, color: muted, marginTop: 3 }}>{formatPeriod(campaign.start_date, campaign.end_date)}</div>
             {isAdmin ? (
-              <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+              <>
+                <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
+                <PublishToggle campaignId={campaign.id} initialPublished={campaign.published} />
+              </>
             ) : null}
 
             {durationUnavailable ? (

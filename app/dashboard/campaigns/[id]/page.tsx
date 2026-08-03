@@ -133,7 +133,9 @@ export default async function CampaignDetailPage({
   // authentifié : jamais un autre client, admin ou non.
   const { data: campaign } = await supabase
     .from('campaigns')
-    .select('id, campaign_number, start_date, end_date, status, meta_spend, meta_pixel_leads, manual_appointments_adjustment')
+    .select(
+      'id, campaign_number, start_date, end_date, status, published, meta_spend, meta_pixel_leads, manual_appointments_adjustment'
+    )
     .eq('id', id)
     .eq('client_id', profile.client_id)
     .maybeSingle()
@@ -142,13 +144,13 @@ export default async function CampaignDetailPage({
     notFound()
   }
 
-  // Une campagne encore ACTIVE sur Meta reste en cours de diffusion : ses
-  // chiffres ne sont pas définitifs, sa page détail n'est donc pas
-  // accessible tant qu'elle n'est pas clôturée (même règle que les listes,
-  // voir app/dashboard/page.tsx et comparison/page.tsx — ici appliquée à
-  // l'accès direct par URL, la campagne n'apparaissant déjà plus dans aucun
-  // lien qui y mènerait).
-  if (campaign.status === 'ACTIVE') {
+  // État de publication (indépendant du statut Meta) : un client ne peut pas
+  // accéder directement par URL à une campagne non publiée (même règle que
+  // les listes, voir app/dashboard/page.tsx et comparison/page.tsx — la
+  // campagne n'apparaît déjà plus dans aucun lien qui y mènerait, ceci
+  // couvre l'accès direct). L'admin accède à tout, y compris les campagnes
+  // non publiées.
+  if (!isAdmin && !campaign.published) {
     notFound()
   }
 

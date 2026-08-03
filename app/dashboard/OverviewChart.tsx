@@ -199,6 +199,21 @@ export default function OverviewChart({
             </path>
           )
         })}
+        {/* Nombre de RDV affiché directement au-dessus de chaque barre — le
+            survol (title ci-dessus) reste inchangé, ceci est en plus. */}
+        {points.map((p, i) => (
+          <text
+            key={`count-${p.campaign_number}`}
+            x={xCenter(i)}
+            y={Math.max(marginTop + 9, yForAppointments(p.appointments) - 6)}
+            textAnchor="middle"
+            fontSize={10.5}
+            fontWeight={700}
+            fill={violet}
+          >
+            {fmtAppointments(p.appointments)}
+          </text>
+        ))}
 
         <polyline
           points={linePoints}
