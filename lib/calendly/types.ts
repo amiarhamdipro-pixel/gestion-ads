@@ -34,11 +34,16 @@ export type CalendlyQuestionAnswer = {
   position: number
 }
 
-// name/email/text_reminder_number existent sur l'objet réel mais ne sont
-// jamais lus ni journalisés ici (donnée personnelle).
+// name/first_name/last_name/email/text_reminder_number existent sur l'objet
+// réel mais ne sont jamais lus ni journalisés ici (donnée personnelle) — type
+// volontairement minimal pour qu'un accès accidentel à ces champs soit une
+// erreur de compilation, pas juste une convention. created_at (horodatage de
+// création de la réservation, jamais personnel) est en revanche nécessaire
+// au rattachement de campagne (lib/sync/syncAppointments.ts).
 export type CalendlyInvitee = {
   uri: string
   status: string
+  created_at: string
   questions_and_answers: CalendlyQuestionAnswer[]
 }
 

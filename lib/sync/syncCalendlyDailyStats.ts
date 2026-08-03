@@ -16,8 +16,17 @@
 // et les jours déjà présents en base pour ce client (remis à 0 s'ils n'ont
 // plus de rendez-vous).
 //
-// Aucune donnée personnelle lue : seuls campaign_id et start_time (voir
-// lib/calendly/appointments.ts — jamais nom/email/téléphone/réponses libres).
+// stat_date = date de CRÉATION de la réservation (booking_created_at), pas
+// la date prévue du rendez-vous (start_time) — même règle que le
+// rattachement de campagne (voir lib/sync/syncAppointments.ts) : un jour de
+// statistiques doit refléter quand la conversion a eu lieu, pas quand le
+// rendez-vous se tiendra. Un rendez-vous rattaché à une campagne a toujours
+// un booking_created_at non nul (c'est ce champ qui a servi à le rattacher) ;
+// le garde ci-dessous est purement défensif.
+//
+// Aucune donnée personnelle lue : seuls campaign_id et booking_created_at
+// (voir lib/calendly/appointments.ts — jamais nom/email/téléphone/réponses
+// libres).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parisDateFromInstant } from '@/lib/calculations'
@@ -37,7 +46,7 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
   // personnelle (voir en-tête).
   const { data: appointmentRows, error: appointmentsError } = await supabase
     .from('appointments')
-    .select('campaign_id, start_time')
+    .select('campaign_id, booking_created_at')
     .eq('client_id', clientId)
     .eq('status', 'active')
     .not('campaign_id', 'is', null)
@@ -48,8 +57,11 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
 
   const counts = new Map<string, number>()
   for (const row of appointmentRows ?? []) {
-    if (!row.campaign_id) continue
-    const statDate = parisDateFromInstant(row.start_time)
+    // booking_created_at manquant : défensif uniquement (voir en-tête), on
+    // n'invente pas de date de repli — ce rendez-vous est simplement exclu
+    // des statistiques journalières tant qu'il n'est pas correctement enrichi.
+    if (!row.campaign_id || !row.booking_created_at) continue
+    const statDate = parisDateFromInstant(row.booking_created_at)
     const key = `${row.campaign_id}|${statDate}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }

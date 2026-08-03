@@ -69,11 +69,25 @@ export function aggregateDailyInsights(
     .sort((a, b) => (a.statDate < b.statDate ? -1 : a.statDate > b.statDate ? 1 : 0))
 }
 
-export function mapAdToVideoInsert(audienceId: string, ad: MetaAd, insights: MetaAdInsights | null): VideoInsert {
+// Seul object_story_spec.video_data.video_id est utilisé (jamais
+// creative.video_id, racine — voir MetaAdCreative, types.ts). Retourne null
+// pour toute pub non vidéo (creative/object_story_spec/video_data absent) :
+// aucun appel Meta n'est alors tenté pour cette pub (lib/sync/syncCampaign.ts).
+export function extractVideoId(ad: MetaAd): string | null {
+  return ad.creative?.object_story_spec?.video_data?.video_id ?? null
+}
+
+export function mapAdToVideoInsert(
+  audienceId: string,
+  ad: MetaAd,
+  insights: MetaAdInsights | null,
+  videoDisplayName: string | null
+): VideoInsert {
   return {
     audience_id: audienceId,
     meta_ad_id: ad.id,
     name: ad.name,
+    video_display_name: videoDisplayName,
     impressions: insights ? Number(insights.impressions ?? 0) : 0,
     video_plays: firstActionValue(insights?.video_play_actions),
     // Vues 3 secondes : dénominateur du taux d'accroche ("Hook Rate") tel que

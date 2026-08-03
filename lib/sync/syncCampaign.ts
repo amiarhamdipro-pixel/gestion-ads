@@ -42,10 +42,17 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logError } from '@/lib/logger'
-import { fetchAdInsights, fetchAdSetAds, fetchAdSetDailyInsights, fetchAdSetInsights, fetchCampaignAdSets } from './meta'
+import {
+  fetchAdInsights,
+  fetchAdSetAds,
+  fetchAdSetDailyInsights,
+  fetchAdSetInsights,
+  fetchCampaignAdSets,
+  fetchVideoTitle,
+} from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
-import { mapAdSetToAudienceInsert, mapAdToVideoInsert } from './mapper'
-import type { SyncCampaignParams, SyncCampaignResult } from './types'
+import { extractVideoId, mapAdSetToAudienceInsert, mapAdToVideoInsert } from './mapper'
+import type { MetaAd, SyncCampaignParams, SyncCampaignResult } from './types'
 
 function mergeStatus(statusA: string, statusB: string): string {
   return statusA === statusB ? statusA : 'MIXED'
@@ -62,6 +69,22 @@ function earliestDate(a: string | null, b: string | null): string | null {
   if (!a) return b
   if (!b) return a
   return a < b ? a : b
+}
+
+// Un seul appel Meta par video_id réellement rencontré durant CETTE synchro
+// (pas de cache inter-appels : voir en-tête sur l'absence de transaction/état
+// partagé) — si plusieurs pubs (barbier + coiffeur) réutilisent la même
+// vidéo, la 2e réutilise directement la valeur déjà résolue pour la 1re.
+// Ne lève jamais (fetchVideoTitle absorbe déjà toute erreur, voir meta.ts) ;
+// pas de video_id (pub non vidéo, creative absente...) -> null sans appel.
+async function resolveVideoDisplayName(ad: MetaAd, cache: Map<string, string | null>): Promise<string | null> {
+  const videoId = extractVideoId(ad)
+  if (!videoId) return null
+  if (cache.has(videoId)) return cache.get(videoId) ?? null
+
+  const title = await fetchVideoTitle(videoId)
+  cache.set(videoId, title)
+  return title
 }
 
 // Journalisation dans sync_runs (schéma existant, non modifié) : une ligne par
@@ -223,6 +246,9 @@ async function runSync(
   }
 
   const videoInserts: ReturnType<typeof mapAdToVideoInsert>[] = []
+  // Partagé entre les deux audiences (barbier/coiffeur) de cette campagne :
+  // voir resolveVideoDisplayName ci-dessus.
+  const videoTitleCache = new Map<string, string | null>()
 
   for (const [audienceRow, adSet] of [
     [barbierAudienceRow, barbierAdSet],
@@ -231,7 +257,8 @@ async function runSync(
     const ads = await fetchAdSetAds(adSet.id)
     for (const ad of ads) {
       const adInsights = await fetchAdInsights(ad.id)
-      videoInserts.push(mapAdToVideoInsert(audienceRow.id, ad, adInsights))
+      const videoDisplayName = await resolveVideoDisplayName(ad, videoTitleCache)
+      videoInserts.push(mapAdToVideoInsert(audienceRow.id, ad, adInsights, videoDisplayName))
     }
   }
 

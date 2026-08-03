@@ -1,26 +1,46 @@
 // Orchestration Calendly -> Supabase pour la table appointments. Lecture
 // seule côté Calendly (voir lib/calendly/appointments.ts). Synchro réellement
 // différentielle : chaque rendez-vous est comparé à la ligne existante
-// (event_type_uri, start_time, status, acquisition_channel, campaign_id) et
-// seuls les créations/changements réels sont envoyés à l'upsert (clé externe
-// stable calendly_event_uri, unique en base, migration
-// 20260801000000_appointments.sql) — un rendez-vous identique n'est pas
-// réécrit. campaign_id est rattaché automatiquement par fenêtre de dates
-// (campagnes du même client, start_date/end_date non nulles uniquement,
-// lib/calculations.ts) : aucune ventilation Barbier/Coiffeur, aucune
-// attribution arbitraire en cas de chevauchement (erreur explicite à la
-// place).
+// (event_type_uri, start_time, status, acquisition_channel,
+// booking_created_at, campaign_id) et seuls les créations/changements réels
+// sont envoyés à l'upsert (clé externe stable calendly_event_uri, unique en
+// base, migration 20260801000000_appointments.sql) — un rendez-vous
+// identique n'est pas réécrit.
 //
-// Lecture de l'acquisition_channel réellement incrémentale : la liste des
-// événements (fetchScheduledEvents, statut/start_time/event_type_uri) est
-// toujours relue en entier — pas chère, un seul type d'appel — mais /invitees
-// (fetchAcquisitionChannels, coûteux, cause de la panne de synchro d'origine)
-// n'est appelé QUE pour les rendez-vous nouveaux ou dont acquisition_channel
-// est encore null/vide en base. Un rendez-vous déjà connu avec un canal
-// renseigné réutilise directement la valeur stockée : jamais reperdue, jamais
-// re-demandée à Calendly. Les champs structurels (status, start_time,
+// Règle de rattachement de campagne : campaign_id est déterminé par la date
+// de CRÉATION de la réservation Calendly (booking_created_at, invitee.
+// created_at — voir lib/calendly/appointments.ts), pas par la date prévue du
+// rendez-vous (start_time). Une conversion appartient à la campagne active au
+// moment où la réservation est créée : un rendez-vous prévu après la fin
+// d'une campagne peut donc lui être rattaché si sa réservation a été prise
+// pendant la fenêtre de cette campagne (cas réel constaté : campagne 20,
+// 3 réservations Instagram créées entre le 29/07 et le 31/07 pour des
+// créneaux planifiés après le 01/08). AVANT : campaign.start_date <=
+// appointment.start_time <= campaign.end_date. APRÈS : campaign.start_date
+// <= appointment.booking_created_at <= campaign.end_date. start_time reste
+// stockée et affichée pour l'information opérationnelle du rendez-vous, mais
+// n'est plus jamais utilisée pour ce rattachement (lib/calculations.ts :
+// aucune ventilation Barbier/Coiffeur, aucune attribution arbitraire en cas
+// de chevauchement — erreur explicite à la place). Si booking_created_at est
+// encore null (rendez-vous pas encore enrichi, voir plus bas), aucun
+// rattachement n'est tenté : jamais de repli sur start_time.
+//
+// Lecture de l'acquisition_channel ET de booking_created_at réellement
+// incrémentale : la liste des événements (fetchScheduledEvents, statut/
+// start_time/event_type_uri) est toujours relue en entier — pas chère, un
+// seul type d'appel — mais /invitees (fetchInviteeDetails, coûteux, cause de
+// la panne de synchro d'origine) n'est appelé QUE pour les rendez-vous
+// nouveaux ou dont acquisition_channel OU booking_created_at est encore
+// null/vide en base. Un rendez-vous déjà connu avec ces deux valeurs déjà
+// renseignées réutilise directement les valeurs stockées : jamais reperdues,
+// jamais re-demandées à Calendly. Les champs structurels (status, start_time,
 // event_type_uri) proviennent toujours de la lecture fraîche, jamais de la
-// base — seul le canal est éligible à la réutilisation.
+// base — seuls le canal et booking_created_at sont éligibles à la
+// réutilisation. Effet de bord attendu et ponctuel : booking_created_at étant
+// un champ nouveau, la première synchro qui suit son introduction ré-appelle
+// /invitees pour tous les rendez-vous déjà connus (coût comparable à la
+// synchro à froid d'origine) ; les synchros suivantes redeviennent
+// incrémentales normalement.
 //
 // Règle métier : le dashboard ne mesure que les performances Meta. Un
 // rendez-vous n'est rattaché à une campagne (campaign_id) que si son
@@ -39,7 +59,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  fetchAcquisitionChannels,
+  fetchInviteeDetails,
   fetchScheduledEvents,
   type CalendlyAppointmentRaw,
   type CalendlyScheduledAppointment,
@@ -50,7 +70,7 @@ import type { Appointment } from '@/types/database'
 
 type ExistingAppointmentRow = Pick<
   Appointment,
-  'calendly_event_uri' | 'event_type_uri' | 'start_time' | 'status' | 'acquisition_channel' | 'campaign_id'
+  'calendly_event_uri' | 'event_type_uri' | 'start_time' | 'status' | 'acquisition_channel' | 'booking_created_at' | 'campaign_id'
 >
 
 type AppointmentWithCampaign = CalendlyAppointmentRaw & { campaign_id: string | null }
@@ -69,16 +89,23 @@ function isMetaAcquisitionChannel(channel: string | null): boolean {
   return normalized.startsWith('facebook') || normalized.startsWith('instagram')
 }
 
-// start_time est comparé par instant (Date.getTime()), pas par égalité de
-// chaîne : Calendly renvoie "...Z" alors que Postgres/PostgREST renvoie
-// "...+00:00" pour le même instant — une comparaison de chaînes classerait
-// systématiquement la ligne "modifiée" (constaté en conditions réelles).
+// start_time/booking_created_at sont comparés par instant (Date.getTime()),
+// pas par égalité de chaîne : Calendly renvoie "...Z" alors que Postgres/
+// PostgREST renvoie "...+00:00" pour le même instant — une comparaison de
+// chaînes classerait systématiquement la ligne "modifiée" (constaté en
+// conditions réelles).
+function sameInstant(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b
+  return new Date(a).getTime() === new Date(b).getTime()
+}
+
 function isUnchanged(existing: ExistingAppointmentRow, incoming: AppointmentWithCampaign): boolean {
   return (
     existing.event_type_uri === incoming.event_type_uri &&
-    new Date(existing.start_time).getTime() === new Date(incoming.start_time).getTime() &&
+    sameInstant(existing.start_time, incoming.start_time) &&
     existing.status === incoming.status &&
     existing.acquisition_channel === incoming.acquisition_channel &&
+    sameInstant(existing.booking_created_at, incoming.booking_created_at) &&
     existing.campaign_id === incoming.campaign_id
   )
 }
@@ -154,7 +181,7 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   )) {
     const { data: existingRows, error: existingError } = await supabase
       .from('appointments')
-      .select('calendly_event_uri, event_type_uri, start_time, status, acquisition_channel, campaign_id')
+      .select('calendly_event_uri, event_type_uri, start_time, status, acquisition_channel, booking_created_at, campaign_id')
       .in('calendly_event_uri', batch)
 
     if (existingError) {
@@ -168,21 +195,25 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   }
 
   // /invitees uniquement pour les rendez-vous nouveaux (absents de
-  // existingByUri) ou dont le canal stocké est encore null/vide — jamais pour
-  // un canal déjà connu (cause racine de la lenteur d'origine, voir en-tête).
-  const needsChannelUris = dedupedEvents
-    .filter((event) => !existingByUri.get(event.calendly_event_uri)?.acquisition_channel)
+  // existingByUri) ou dont le canal OU booking_created_at stocké est encore
+  // null/vide — jamais pour un rendez-vous dont les deux valeurs sont déjà
+  // connues (cause racine de la lenteur d'origine, voir en-tête).
+  const needsInviteeDetailsUris = dedupedEvents
+    .filter((event) => {
+      const existing = existingByUri.get(event.calendly_event_uri)
+      return !existing?.acquisition_channel || !existing?.booking_created_at
+    })
     .map((event) => event.calendly_event_uri)
 
-  const { channels: freshChannels, errors: channelErrors, invited } = await fetchAcquisitionChannels(needsChannelUris)
-  errorDetails.push(...channelErrors)
+  const { details: freshDetails, errors: detailErrors, invited } = await fetchInviteeDetails(needsInviteeDetailsUris)
+  errorDetails.push(...detailErrors)
 
   const deduped: CalendlyAppointmentRaw[] = dedupedEvents.map((event) => {
     const existing = existingByUri.get(event.calendly_event_uri)
-    const acquisitionChannel = freshChannels.has(event.calendly_event_uri)
-      ? (freshChannels.get(event.calendly_event_uri) ?? null)
-      : (existing?.acquisition_channel ?? null)
-    return { ...event, acquisition_channel: acquisitionChannel }
+    const fresh = freshDetails.get(event.calendly_event_uri)
+    const acquisitionChannel = fresh ? (fresh.acquisitionChannel ?? null) : (existing?.acquisition_channel ?? null)
+    const bookingCreatedAt = fresh ? (fresh.bookingCreatedAt ?? null) : (existing?.booking_created_at ?? null)
+    return { ...event, acquisition_channel: acquisitionChannel, booking_created_at: bookingCreatedAt }
   })
 
   // Campagnes du même client uniquement, avec start_date ET end_date
@@ -227,9 +258,14 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
       // jamais reconsidéré (voir commentaire sur campaignWindows ci-dessus).
       campaignId = existing.campaign_id
     } else {
-      const matches = isMetaAcquisitionChannel(appointment.acquisition_channel)
-        ? campaignsMatchingAppointment(campaignWindows, appointment.start_time)
-        : []
+      // Rattachement par date de CRÉATION de la réservation
+      // (booking_created_at), jamais par start_time (voir en-tête). Sans
+      // booking_created_at (rendez-vous pas encore enrichi), aucun
+      // rattachement n'est tenté — jamais de repli sur start_time.
+      const matches =
+        isMetaAcquisitionChannel(appointment.acquisition_channel) && appointment.booking_created_at
+          ? campaignsMatchingAppointment(campaignWindows, appointment.booking_created_at)
+          : []
 
       if (matches.length > 1) {
         // Chevauchement : aucune attribution arbitraire. On préserve la valeur

@@ -87,7 +87,7 @@ async function computeRankedVideos(
 
   const { data: videoData } = await supabase
     .from('videos')
-    .select('audience_id, meta_ad_id, name, impressions, video_plays_3s')
+    .select('audience_id, meta_ad_id, name, video_display_name, impressions, video_plays_3s')
     .in(
       'audience_id',
       audiences.map((a) => a.id)
@@ -101,6 +101,7 @@ async function computeRankedVideos(
   type VideoGroup = {
     metaAdId: string
     name: string
+    videoDisplayName: string | null
     audienceType: 'barbier' | 'coiffeur'
     campaignNumbers: Set<number>
     totalImpressions: number
@@ -128,6 +129,7 @@ async function computeRankedVideos(
       groups.set(video.meta_ad_id, {
         metaAdId: video.meta_ad_id,
         name: video.name,
+        videoDisplayName: video.video_display_name,
         audienceType: audience.audience_type,
         campaignNumbers: new Set(campaignNumber !== undefined ? [campaignNumber] : []),
         totalImpressions: video.impressions,
@@ -141,6 +143,7 @@ async function computeRankedVideos(
   return Array.from(groups.values()).map((g) => ({
     metaAdId: g.metaAdId,
     name: g.name,
+    videoDisplayName: g.videoDisplayName,
     campaignCount: g.campaignNumbers.size,
     audienceType: g.audienceType,
     costPerLead: costPerMetaPixelLead(g.totalSpend, g.totalLeads),

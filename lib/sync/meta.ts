@@ -2,7 +2,7 @@
 // principe que meta-test.mjs (Phase 0) sous forme de fonctions typées et
 // réutilisables. N'écrit rien en base : voir mapper.ts / groupByCampaign.ts.
 
-import type { MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetDailyInsight, MetaAdSetInsights } from './types'
+import type { MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetDailyInsight, MetaAdSetInsights, MetaVideoTitle } from './types'
 
 type MetaApiErrorResponse = {
   error: { message: string; code: number }
@@ -105,7 +105,25 @@ export async function fetchAdSetDailyInsights(
 }
 
 export async function fetchAdSetAds(adSetId: string): Promise<MetaAd[]> {
-  return metaApiGetAll<MetaAd>(`${adSetId}/ads`, { fields: 'id,name', limit: '50' })
+  return metaApiGetAll<MetaAd>(`${adSetId}/ads`, {
+    fields: 'id,name,creative{object_story_spec}',
+    limit: '50',
+  })
+}
+
+// Lecture seule, un seul champ (title) — jamais source/permalink_url/
+// thumbnail (voir BRIEF-CLAUDE-CODE.md). Ne lève jamais : la synchro d'une
+// campagne ne doit jamais échouer à cause du nom de fichier vidéo (pas de
+// title, permission refusée sur ce video_id, pub non vidéo...) — tout échec
+// se traduit par null, jamais une exception propagée à l'appelant
+// (lib/sync/syncCampaign.ts, qui stocke alors video_display_name = null).
+export async function fetchVideoTitle(videoId: string): Promise<string | null> {
+  try {
+    const video = await metaApiGet<MetaVideoTitle>(videoId, { fields: 'title' })
+    return video.title ?? null
+  } catch {
+    return null
+  }
 }
 
 export async function fetchAdInsights(adId: string, datePreset = 'maximum'): Promise<MetaAdInsights | null> {

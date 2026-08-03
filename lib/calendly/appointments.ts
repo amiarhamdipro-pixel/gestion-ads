@@ -28,8 +28,11 @@
 //   start_time, event_type_uri) — un seul type d'appel (/scheduled_events),
 //   aucun /invitees, donc rapide et sans risque de limite de débit quel que
 //   soit le volume.
-// - fetchAcquisitionChannels(eventUris) : n'interroge /invitees QUE pour les
-//   URIs demandées, avec la même parallélisation bornée + retry qu'avant.
+// - fetchInviteeDetails(eventUris) : n'interroge /invitees QUE pour les URIs
+//   demandées, avec la même parallélisation bornée + retry qu'avant — renvoie
+//   à la fois le canal d'acquisition et la date de création de la réservation
+//   (invitee.created_at, voir booking_created_at), un seul appel pour les
+//   deux.
 
 import { calendlyGet, calendlyGetAllPages } from './client'
 import type {
@@ -48,23 +51,31 @@ const DEFAULT_ACQUISITION_CHANNEL_QUESTION = 'Par quel canal avez-vous découver
 export type CalendlyAppointmentRaw = {
   calendly_event_uri: string
   event_type_uri: string
+  // Date prévue du rendez-vous — information opérationnelle uniquement,
+  // jamais utilisée pour le rattachement de campagne (voir bookingCreatedAt
+  // ci-dessous et lib/sync/syncAppointments.ts).
   start_time: string
   status: 'active' | 'canceled'
   acquisition_channel: string | null
+  // Date de création de la réservation (invitee.created_at Calendly) — c'est
+  // ce champ qui détermine le rattachement de campagne, jamais start_time.
+  booking_created_at: string | null
 }
 
-export type CalendlyScheduledAppointment = Omit<CalendlyAppointmentRaw, 'acquisition_channel'>
+export type CalendlyScheduledAppointment = Omit<CalendlyAppointmentRaw, 'acquisition_channel' | 'booking_created_at'>
 
 export type FetchScheduledEventsResult = {
   events: CalendlyScheduledAppointment[]
   errors: string[]
 }
 
-export type FetchAcquisitionChannelsResult = {
+export type InviteeDetails = { acquisitionChannel: string | null; bookingCreatedAt: string | null }
+
+export type FetchInviteeDetailsResult = {
   // Clé = calendly_event_uri. Une entrée absente signifie un échec de
-  // lecture pour cette URI (voir errors) ; le canal existant en base doit
-  // alors être préservé par l'appelant, jamais remplacé par null.
-  channels: Map<string, string | null>
+  // lecture pour cette URI (voir errors) ; les valeurs existantes en base
+  // doivent alors être préservées par l'appelant, jamais remplacées par null.
+  details: Map<string, InviteeDetails>
   errors: string[]
   invited: number
 }
@@ -106,16 +117,21 @@ async function resolveOrganizationUri(): Promise<string> {
 
 // Un rendez-vous Calendly (événement 1:1) n'a normalement qu'un seul invité :
 // on ne lit que le premier. questions_and_answers ne contient jamais nom/
-// email/téléphone (voir CalendlyInvitee) ; seule la réponse correspondant à
-// la question canal d'acquisition est retenue, tout le reste est ignoré ici.
-async function findAcquisitionChannel(eventUri: string): Promise<string | null> {
+// email/téléphone (voir CalendlyInvitee) ; seuls la réponse correspondant à
+// la question canal d'acquisition et l'horodatage de création de la
+// réservation (created_at, jamais personnel) sont retenus, tout le reste est
+// ignoré ici.
+async function findInviteeDetails(eventUri: string): Promise<InviteeDetails> {
   const question = acquisitionChannelQuestion()
   const invitees = await calendlyGetAllPages<CalendlyInvitee>(`${eventUri}/invitees`, { count: '100' })
   const invitee = invitees[0]
-  if (!invitee) return null
+  if (!invitee) return { acquisitionChannel: null, bookingCreatedAt: null }
 
   const match = invitee.questions_and_answers.find((qa) => qa.question.trim().toLowerCase() === question)
-  return match ? match.answer.trim() : null
+  return {
+    acquisitionChannel: match ? match.answer.trim() : null,
+    bookingCreatedAt: invitee.created_at ?? null,
+  }
 }
 
 // Liste les événements (actifs + annulés) sans jamais appeler /invitees :
@@ -153,20 +169,21 @@ export async function fetchScheduledEvents(): Promise<FetchScheduledEventsResult
 }
 
 // N'appelle /invitees que pour les URIs fournies par l'appelant (nouveaux
-// rendez-vous, ou canal déjà en base null/vide — jamais pour un canal déjà
-// renseigné : voir lib/sync/syncAppointments.ts).
-export async function fetchAcquisitionChannels(eventUris: string[]): Promise<FetchAcquisitionChannelsResult> {
-  const channels = new Map<string, string | null>()
+// rendez-vous, ou canal/date de réservation encore null/vide en base —
+// jamais pour un rendez-vous déjà entièrement connu : voir
+// lib/sync/syncAppointments.ts).
+export async function fetchInviteeDetails(eventUris: string[]): Promise<FetchInviteeDetailsResult> {
+  const details = new Map<string, InviteeDetails>()
   const errors: string[] = []
 
   await mapWithConcurrency(eventUris, INVITEE_FETCH_CONCURRENCY, async (eventUri) => {
     try {
-      channels.set(eventUri, await findAcquisitionChannel(eventUri))
+      details.set(eventUri, await findInviteeDetails(eventUri))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       errors.push(`Échec lecture des invités pour ${eventUri} : ${message}`)
     }
   })
 
-  return { channels, errors, invited: eventUris.length }
+  return { details, errors, invited: eventUris.length }
 }

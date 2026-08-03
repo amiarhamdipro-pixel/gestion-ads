@@ -142,24 +142,27 @@ function parisDateToUtcMs(dateStr: string, hour: number, minute: number, second:
   return naiveUtcMs - offsetMinutes * 60000
 }
 
-// Retourne les ids des campagnes dont la fenêtre contient startTime. 0 id =
-// aucun rattachement ; 1 id = rattachement possible ; 2+ ids = chevauchement,
-// à traiter comme une erreur explicite par l'appelant (aucune attribution
-// arbitraire ici).
-export function campaignsMatchingAppointment(campaigns: CampaignWindow[], startTime: string): string[] {
-  const startTimeMs = new Date(startTime).getTime()
+// Retourne les ids des campagnes dont la fenêtre contient l'instant donné.
+// 0 id = aucun rattachement ; 1 id = rattachement possible ; 2+ ids =
+// chevauchement, à traiter comme une erreur explicite par l'appelant (aucune
+// attribution arbitraire ici). Générique : l'appelant (lib/sync/
+// syncAppointments.ts) y passe appointment.booking_created_at (date de
+// création de la réservation — la règle de rattachement métier), jamais
+// start_time (date prévue du rendez-vous, purement opérationnelle).
+export function campaignsMatchingAppointment(campaigns: CampaignWindow[], instant: string): string[] {
+  const instantMs = new Date(instant).getTime()
   return campaigns
     .filter((campaign) => {
       const windowStartMs = parisDateToUtcMs(campaign.startDate, 0, 0, 0)
       const windowEndMs = parisDateToUtcMs(campaign.endDate, 23, 59, 59)
-      return startTimeMs >= windowStartMs && startTimeMs <= windowEndMs
+      return instantMs >= windowStartMs && instantMs <= windowEndMs
     })
     .map((campaign) => campaign.id)
 }
 
 // Date calendaire (YYYY-MM-DD) en heure locale Europe/Paris pour un instant
 // donné — direction inverse de parisDateToUtcMs. Utilisé pour convertir
-// appointments.start_time en "date métier" (lib/sync/syncCalendlyDailyStats.ts),
+// appointments.booking_created_at en "date métier" (lib/sync/syncCalendlyDailyStats.ts),
 // même fuseau que campaignsMatchingAppointment ci-dessus.
 export function parisDateFromInstant(instant: string): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {

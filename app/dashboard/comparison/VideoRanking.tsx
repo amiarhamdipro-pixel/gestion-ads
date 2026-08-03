@@ -6,6 +6,7 @@ import { accent, ink, line, muted, radius, surface, surfaceAlt, violet } from '.
 export type RankedVideo = {
   metaAdId: string
   name: string
+  videoDisplayName: string | null
   campaignCount: number
   audienceType: 'barbier' | 'coiffeur'
   costPerLead: number | null
@@ -20,6 +21,14 @@ function formatCostValue(n: number): string {
 
 function formatPctValue(n: number): string {
   return `${(n * 100).toFixed(1).replace('.', ',')} %`
+}
+
+// Même priorité d'affichage que le détail campagne (voir
+// BRIEF-CLAUDE-CODE.md) : nom réel du fichier importé dans Meta -> nom de la
+// pub Ads Manager -> repli générique. Jamais d'erreur, jamais de placeholder
+// technique.
+function videoDisplayName(video: RankedVideo): string {
+  return video.videoDisplayName?.trim() || video.name.trim() || 'Vidéo'
 }
 
 export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
@@ -94,7 +103,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
               </div>
               <div>
                 <b style={{ fontSize: 14, display: 'block', color: v.audienceType === 'barbier' ? accent : violet }}>
-                  {v.name}
+                  {videoDisplayName(v)}
                 </b>
                 <span style={{ fontSize: 12, color: muted }}>
                   diffusée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
@@ -134,7 +143,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                 >
                   <div style={{ textAlign: 'center', color: muted }}>—</div>
                   <div>
-                    <b style={{ fontSize: 14, display: 'block', color: ink }}>{v.name}</b>
+                    <b style={{ fontSize: 14, display: 'block', color: ink }}>{videoDisplayName(v)}</b>
                     <span style={{ fontSize: 12, color: muted }}>
                       diffusée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
                     </span>

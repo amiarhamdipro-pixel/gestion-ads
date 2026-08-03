@@ -171,6 +171,30 @@ code a changé depuis) :
   jour, 1145 ignorés). Base finale strictement identique à l'état initial
   (1145 rendez-vous, 0 `campaign_id` non nul). Aucune donnée personnelle
   lue ni stockée (nom/email/téléphone/réponses libres).
+- **Correctif du champ utilisé pour le rattachement (campagne n°20) : le
+  rattachement d'un rendez-vous à une campagne utilise la date de création
+  de la réservation Calendly, pas la date prévue du rendez-vous.** La
+  fenêtre décrite au point précédent (`start_date`/`end_date`, Europe/Paris,
+  chevauchement = erreur explicite) est inchangée ; seul l'instant comparé à
+  cette fenêtre change. AVANT : `campaign.start_date <= appointment.start_time
+  <= campaign.end_date`. APRÈS : `campaign.start_date <=
+  appointment.booking_created_at <= campaign.end_date`, où
+  `booking_created_at` est `invitee.created_at` côté API Calendly (champ
+  prouvé, pas supposé, sur 3 cas réels de la campagne n°20 : réservations
+  Instagram créées le 29, 30 et 31/07 — donc pendant la fenêtre de la
+  campagne n°20 — pour des créneaux planifiés après sa fin le 01/08).
+  `start_time` reste stockée et affichée pour l'information opérationnelle
+  du rendez-vous (quand il aura lieu), mais n'est plus jamais utilisée pour
+  ce rattachement. Colonne `booking_created_at` (`timestamptz`, nullable)
+  ajoutée par la migration `20260806000000_appointments_booking_created_at.sql`
+  (`types/database.ts`, `lib/calendly/appointments.ts`,
+  `lib/sync/syncAppointments.ts`, `lib/sync/syncCalendlyDailyStats.ts` — cette
+  dernière calcule désormais `stat_date` à partir de
+  `booking_created_at`, pas `start_time`). Sans `booking_created_at` (rendez-
+  vous pas encore enrichi), aucun rattachement n'est tenté — jamais de repli
+  sur `start_time`. Campagnes `sync_locked` (n°1 à 19) non concernées : leurs
+  rendez-vous déjà rattachés ne sont jamais reconsidérés, quel que soit le
+  champ de comparaison.
 - **Dashboard branché sur les RDV Calendly réels** (`app/dashboard/page.tsx`,
   `OverviewSection.tsx`, `campaigns/[id]/page.tsx`). RDV comptés directement
   dans `appointments` (`status='active'`, `campaign_id` rattaché) — jamais
@@ -554,6 +578,36 @@ code a changé depuis) :
     rôle, graphique sans régression (aucun NaN/Infinity), état vide honnête
     du canal d'acquisition, bannière vidéo + badge meilleur coût/lead
     présents, aucune régression admin (sync, écart de tracking).
+- **`videos.video_display_name` : nom métier affiché dans le dashboard pour
+  une vidéo** (migration `20260807000000_videos_display_name.sql`, `text
+  null`). Distinct de `videos.name` (nom de la PUB tel que saisi dans Ads
+  Manager, inchangé) : `video_display_name` est le nom réel du fichier vidéo
+  importé dans Meta (node Vidéo, champ `title`). Pour les campagnes
+  synchronisées via Meta, il est rempli **automatiquement** par la synchro
+  (`lib/sync/syncCampaign.ts`) : `fetchAdSetAds` lit désormais
+  `creative{object_story_spec}`, `extractVideoId` (`lib/sync/mapper.ts`)
+  n'utilise QUE `creative.object_story_spec.video_data.video_id` — jamais
+  `creative.video_id` (racine), qui pointe vers un autre id Meta inaccessible
+  avec les permissions de ce token (erreur `#10`, constatée en conditions
+  réelles) — puis `fetchVideoTitle` (`lib/sync/meta.ts`) appelle `GET
+  /{video_id}?fields=title` en lecture seule, un seul appel par `video_id`
+  réellement rencontré durant la synchro (cache en mémoire partagé entre les
+  deux audiences barbier/coiffeur de la campagne, voir
+  `resolveVideoDisplayName`). Jamais stocké : `source`/`permalink_url`/URL
+  CDN/miniature — uniquement `title`. Aucune erreur possible : pas de
+  `video_id`, pas de `title`, permission refusée, pub non vidéo →
+  `video_display_name = null`, la synchro de la campagne continue
+  normalement. Pour les **campagnes historiques n°1 à 11** (ancien compte
+  Meta, `sync_locked=true`, jamais resynchronisées — voir
+  `campaigns.sync_locked`), `video_display_name` reste `null` : il sera
+  renseigné **manuellement** plus tard, le code n'a rien à faire de spécial
+  pour ce cas. Affichage (détail campagne et comparaison) selon la priorité
+  `video_display_name` → `videos.name` → `"Vidéo"` (jamais d'erreur, jamais
+  de placeholder technique) ; le nom de la pub Meta reste visible mais
+  secondaire à côté du nom vidéo. Validé en conditions réelles sur la
+  campagne n°20 (resynchronisée seule, aucune autre campagne touchée) :
+  `"video 3 - vidéo ciseaux .mp4"` (Barbier) et `"mcc aca pub 3.mp4"`
+  (Coiffeur).
 - **Bouton admin unique « Synchroniser » remplaçant les deux boutons Meta/
   Calendly séparés** (`SyncButton.tsx`, `app/api/admin/sync/all/route.ts`) :
   un clic déclenche les 4 étapes déjà validées, dans cet ordre strict et sans

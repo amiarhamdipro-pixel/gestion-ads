@@ -1,10 +1,11 @@
 // Transformation pure : rendez-vous Calendly brut -> ligne Insert de la table
 // appointments (types/database.ts). Aucun appel réseau ni base ici. N'écrit
 // que les champs autorisés (calendly_event_uri, event_type_uri, start_time,
-// status, acquisition_channel) + client_id et campaign_id fournis par
-// l'appelant. Calendly n'a aucune notion de campagne : le rattachement par
-// fenêtre de dates est calculé en amont dans lib/sync/syncAppointments.ts
-// (lib/calculations.ts, campaignsMatchingAppointment), jamais ici.
+// status, acquisition_channel, booking_created_at) + client_id et
+// campaign_id fournis par l'appelant. Calendly n'a aucune notion de
+// campagne : le rattachement par date de création de réservation est calculé
+// en amont dans lib/sync/syncAppointments.ts (lib/calculations.ts,
+// campaignsMatchingAppointment), jamais ici.
 
 import type { Database } from '@/types/database'
 import type { CalendlyAppointmentRaw } from './appointments'
@@ -24,5 +25,6 @@ export function mapCalendlyEventToAppointmentInsert(
     start_time: raw.start_time,
     status: raw.status,
     acquisition_channel: raw.acquisition_channel,
+    booking_created_at: raw.booking_created_at,
   }
 }

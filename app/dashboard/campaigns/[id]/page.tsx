@@ -45,6 +45,14 @@ function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
 }
 
+// Priorité d'affichage du nom vidéo (voir BRIEF-CLAUDE-CODE.md) :
+// video_display_name (nom réel du fichier importé dans Meta) -> videos.name
+// (nom de la pub Ads Manager) -> repli générique. Jamais d'erreur, jamais de
+// placeholder technique.
+function videoDisplayName(video: { video_display_name: string | null; name: string }): string {
+  return video.video_display_name?.trim() || video.name.trim() || 'Vidéo'
+}
+
 type ChannelBreakdown = { channel: string; count: number; ratio: number }
 
 // Regroupement insensible à la casse et aux espaces superflus (ex.
@@ -208,7 +216,7 @@ export default async function CampaignDetailPage({
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
+            'id, audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
@@ -563,11 +571,17 @@ export default async function CampaignDetailPage({
                             padding: '20px 10px 8px',
                             background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.7))',
                             color: onDark,
-                            fontSize: 12,
-                            fontWeight: 500,
                           }}
                         >
-                          {video.name}
+                          {/* Nom vidéo (prioritaire) : voir videoDisplayName
+                              ci-dessus. Nom de la pub Meta conservé visible
+                              mais secondaire (taille/opacité réduites). */}
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>
+                            {videoDisplayName(video)}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, opacity: 0.75, marginTop: 2 }}>
+                            {video.name}
+                          </span>
                         </span>
                       </>
                     ) : (

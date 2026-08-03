@@ -64,6 +64,14 @@ export type Video = {
   audience_id: string
   meta_ad_id: string
   name: string
+  // Nom métier affiché dans le dashboard : titre réel du fichier vidéo
+  // importé dans Meta (node Vidéo, champ title — lib/sync/meta.ts,
+  // fetchVideoTitle), distinct de name ci-dessus (nom de la PUB, Ads
+  // Manager). Priorité d'affichage : video_display_name -> name -> "Vidéo"
+  // (voir app/dashboard/campaigns/[id]/page.tsx, comparison/VideoRanking.tsx).
+  // Nullable : non résolu (pub non vidéo, permission refusée...) ou campagne
+  // historique jamais resynchronisée (n°1 à 11, renseigné manuellement).
+  video_display_name: string | null
   impressions: number
   video_plays: number
   video_plays_3s: number
@@ -113,9 +121,18 @@ export type Appointment = {
   campaign_id: string | null
   calendly_event_uri: string
   event_type_uri: string
+  // Date prévue du rendez-vous — information opérationnelle uniquement,
+  // n'est plus utilisée pour le rattachement à une campagne (voir
+  // booking_created_at ci-dessous et lib/sync/syncAppointments.ts).
   start_time: string
   status: AppointmentStatus
   acquisition_channel: string | null
+  // Date de création de la réservation Calendly (invitee.created_at, Calendly
+  // API) — c'est ce champ, pas start_time, qui détermine à quelle campagne un
+  // rendez-vous appartient (une conversion appartient à la campagne active au
+  // moment de la réservation). Nullable : absent tant qu'une synchro ne l'a
+  // pas encore récupéré (voir migration 20260806000000).
+  booking_created_at: string | null
   created_at: string
   updated_at: string
 }
@@ -225,9 +242,9 @@ export interface Database {
       appointments: {
         Row: Appointment
         Insert: Partial<
-          Pick<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel'>
+          Pick<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel' | 'booking_created_at'>
         > &
-          Omit<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel'>
+          Omit<Appointment, 'id' | 'created_at' | 'updated_at' | 'campaign_id' | 'acquisition_channel' | 'booking_created_at'>
         Update: Partial<Appointment>
         Relationships: []
       }

@@ -33,9 +33,32 @@ export type MetaAdSetDailyInsight = {
   actions?: MetaAction[]
 }
 
+// object_story_spec.video_data.video_id est le SEUL video_id à utiliser
+// (voir lib/sync/mapper.ts, extractVideoId) : creative.video_id (racine,
+// absent ici volontairement) pointe vers un autre id Meta, inaccessible avec
+// les permissions de ce token (erreur #10 "Application does not have
+// permission for this action", constatée en conditions réelles sur les 2
+// pubs de la campagne 20).
+export type MetaAdCreative = {
+  object_story_spec?: {
+    video_data?: {
+      video_id?: string
+    }
+  }
+}
+
 export type MetaAd = {
   id: string
   name: string
+  creative?: MetaAdCreative
+}
+
+// Réponse du node Vidéo Meta (GET /{video_id}?fields=title) — jamais d'autre
+// champ demandé ici (pas de source/permalink_url/thumbnail, voir
+// BRIEF-CLAUDE-CODE.md).
+export type MetaVideoTitle = {
+  id: string
+  title?: string
 }
 
 export type MetaActionValue = {

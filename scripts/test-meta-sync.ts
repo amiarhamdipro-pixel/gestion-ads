@@ -182,7 +182,10 @@ async function main(): Promise<void> {
 
     for (const ad of ads) {
       const adInsights = await fetchAdInsights(ad.id)
-      const video = mapAdToVideoInsert(PLACEHOLDER_AUDIENCE_ID, ad, adInsights)
+      // video_display_name non testé ici (script Phase 0, stats uniquement) :
+      // voir scripts/test-sync-campaign.ts ou syncCampaign.ts pour la
+      // résolution réelle (lib/sync/meta.ts, fetchVideoTitle).
+      const video = mapAdToVideoInsert(PLACEHOLDER_AUDIENCE_ID, ad, adInsights, null)
 
       if (video.impressions > 0 || video.video_plays > 0) {
         hasUsableVideoStats = true
