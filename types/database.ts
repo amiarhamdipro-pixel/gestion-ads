@@ -33,6 +33,12 @@ export type Campaign = {
   // modifié automatiquement par la synchro (voir lib/sync/syncCampaign.ts),
   // seul un admin le change (app/api/admin/campaigns/publish/route.ts).
   published: boolean
+  // Verrouillage de synchro définitif, indépendant de status ET de published
+  // ci-dessus. sync_locked=true : plus jamais resynchronisée (Meta ni
+  // Calendly, voir lib/sync/syncAllCampaigns.ts, syncAllCampaignsDailyStats.ts,
+  // syncAppointments.ts) — valeurs figées comme référence historique. Décision
+  // admin/initialisation ponctuelle, jamais modifiée par une synchro.
+  sync_locked: boolean
   meta_spend: number
   meta_pixel_leads: number
   calendly_appointments: number
@@ -151,11 +157,12 @@ export interface Database {
       campaigns: {
         Row: Campaign
         // start_date/end_date/status (nullable), calendly_appointments/
-        // manual_appointments_adjustment (saisie manuelle, jamais dérivés de Meta)
-        // et published (décision admin, jamais dérivée de Meta) sont optionnels
-        // à l'insert : la synchro Meta ne doit jamais les écraser en les omettant
-        // du payload d'upsert (lib/sync/syncCampaign.ts) — la colonne published
-        // a un défaut false en base, appliqué uniquement à la création.
+        // manual_appointments_adjustment (saisie manuelle, jamais dérivés de Meta),
+        // published (décision admin) et sync_locked (verrouillage définitif,
+        // décision admin/initialisation) sont optionnels à l'insert : la
+        // synchro Meta ne doit jamais les écraser en les omettant du payload
+        // d'upsert (lib/sync/syncCampaign.ts) — published/sync_locked ont un
+        // défaut false en base, appliqué uniquement à la création.
         Insert: Partial<
           Pick<
             Campaign,
@@ -166,6 +173,7 @@ export interface Database {
             | 'end_date'
             | 'status'
             | 'published'
+            | 'sync_locked'
             | 'calendly_appointments'
             | 'manual_appointments_adjustment'
           >
@@ -179,6 +187,7 @@ export interface Database {
             | 'end_date'
             | 'status'
             | 'published'
+            | 'sync_locked'
             | 'calendly_appointments'
             | 'manual_appointments_adjustment'
           >

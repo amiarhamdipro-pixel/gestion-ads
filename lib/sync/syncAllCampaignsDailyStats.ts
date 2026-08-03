@@ -7,8 +7,13 @@
 // code 17 sur une campagne signifie presque certainement que les suivantes
 // échoueraient aussi, mieux vaut s'arrêter net que multiplier les tentatives
 // vouées à l'échec contre l'API Meta.
+//
+// Campagnes sync_locked=true : exclues avant tout appel Meta, comme dans
+// syncAllCampaigns.ts (même helper getLockedCampaignNumbers) — une référence
+// historique figée n'a plus de statistiques quotidiennes à recalculer.
 
 import { discoverCampaignNumbers } from './discoverCampaigns'
+import { getLockedCampaignNumbers } from './syncAllCampaigns'
 import { syncCampaignDailyStats } from './syncCampaignDailyStats'
 import type { CampaignDailyStatsSyncOutcome, SyncAllCampaignsDailyStatsReport, SyncAllCampaignsParams } from './types'
 
@@ -22,11 +27,14 @@ export async function syncAllCampaignsDailyStats(
   const { clientId, metaCampaignId, leadActionType } = params
 
   const discovery = await discoverCampaignNumbers(metaCampaignId)
+  const locked = await getLockedCampaignNumbers(clientId)
+  const skippedLocked = discovery.valid.filter((n) => locked.has(n))
+  const toSync = discovery.valid.filter((n) => !locked.has(n))
 
   const details: CampaignDailyStatsSyncOutcome[] = []
   let stoppedOnRateLimit = false
 
-  for (const campaignNumber of discovery.valid) {
+  for (const campaignNumber of toSync) {
     try {
       const result = await syncCampaignDailyStats({ clientId, metaCampaignId, campaignNumber, leadActionType })
       details.push({ campaignNumber, status: 'success', result })
@@ -42,10 +50,11 @@ export async function syncAllCampaignsDailyStats(
   }
 
   return {
-    totalDetected: discovery.valid.length,
+    totalDetected: toSync.length,
     succeeded: details.filter((detail) => detail.status === 'success').length,
     failed: details.filter((detail) => detail.status === 'failed').length,
     stoppedOnRateLimit,
+    skippedLocked,
     invalid: discovery.invalid,
     details,
   }

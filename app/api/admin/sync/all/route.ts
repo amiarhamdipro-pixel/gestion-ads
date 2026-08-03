@@ -24,8 +24,10 @@ import { logError } from '@/lib/logger'
 // les champs des étapes non atteintes restent `null` (jamais une valeur
 // inventée) si un échec dur interrompt la chaîne avant leur tour.
 
-type MetaTotalsSummary = { totalDetected: number; succeeded: number; failed: number }
-type MetaDailySummary = { totalDetected: number; succeeded: number; failed: number; daysUpserted: number } | { error: string }
+type MetaTotalsSummary = { totalDetected: number; succeeded: number; failed: number; skippedLocked: number[] }
+type MetaDailySummary =
+  | { totalDetected: number; succeeded: number; failed: number; daysUpserted: number; skippedLocked: number[] }
+  | { error: string }
 type CalendlyAppointmentsSummary = {
   read: number
   invitees: number
@@ -93,7 +95,12 @@ export async function POST() {
       let metaTotals: MetaTotalsSummary
       try {
         const totalsReport = await syncAllCampaigns(syncParams)
-        metaTotals = { totalDetected: totalsReport.totalDetected, succeeded: totalsReport.succeeded, failed: totalsReport.failed }
+        metaTotals = {
+          totalDetected: totalsReport.totalDetected,
+          succeeded: totalsReport.succeeded,
+          failed: totalsReport.failed,
+          skippedLocked: totalsReport.skippedLocked,
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'erreur inconnue'
         logError('sync', '/api/admin/sync/all (totaux Meta)', message)
@@ -129,6 +136,7 @@ export async function POST() {
             (sum, detail) => sum + (detail.status === 'success' ? detail.result.daysUpserted : 0),
             0
           ),
+          skippedLocked: dailyReport.skippedLocked,
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'erreur inconnue'

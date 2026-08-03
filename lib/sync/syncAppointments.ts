@@ -189,7 +189,7 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   // renseignées (les autres sont ignorées : fenêtre indéterminée).
   const { data: campaignRows, error: campaignsError } = await supabase
     .from('campaigns')
-    .select('id, start_date, end_date')
+    .select('id, start_date, end_date, sync_locked')
     .eq('client_id', clientId)
     .not('start_date', 'is', null)
     .not('end_date', 'is', null)
@@ -198,8 +198,18 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
     throw new Error(`Échec lecture des campagnes : ${campaignsError.message || JSON.stringify(campaignsError)}`)
   }
 
+  // Campagnes sync_locked=true (référence historique figée, voir
+  // campaigns.sync_locked) : exclues de la fenêtre de rattachement pour les
+  // NOUVEAUX rendez-vous (jamais rattachées désormais). Un rendez-vous déjà
+  // rattaché à l'une d'elles avant son verrouillage n'est en revanche jamais
+  // reconsidéré ci-dessous (sinon l'exclure de campaignWindows le ferait
+  // détacher au prochain passage, faute de fenêtre correspondante — l'exact
+  // inverse de "aucune synchro ne modifie ces valeurs").
+  const lockedCampaignIds = new Set((campaignRows ?? []).filter((c) => c.sync_locked).map((c) => c.id))
+
   const campaignWindows: CampaignWindow[] = (campaignRows ?? [])
-    .filter((c): c is { id: string; start_date: string; end_date: string } => c.start_date !== null && c.end_date !== null)
+    .filter((c): c is { id: string; start_date: string; end_date: string; sync_locked: boolean } => c.start_date !== null && c.end_date !== null)
+    .filter((c) => !c.sync_locked)
     .map((c) => ({ id: c.id, startDate: c.start_date, endDate: c.end_date }))
 
   let created = 0
@@ -210,21 +220,28 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
 
   for (const appointment of deduped) {
     const existing = existingByUri.get(appointment.calendly_event_uri)
-    const matches = isMetaAcquisitionChannel(appointment.acquisition_channel)
-      ? campaignsMatchingAppointment(campaignWindows, appointment.start_time)
-      : []
 
     let campaignId: string | null
-    if (matches.length > 1) {
-      // Chevauchement : aucune attribution arbitraire. On préserve la valeur
-      // déjà en base (ou null pour une création) et on journalise l'erreur.
-      campaignId = existing?.campaign_id ?? null
-      errorDetails.push(
-        `Rendez-vous ${appointment.calendly_event_uri} : ${matches.length} campagnes se chevauchent ` +
-          `(${matches.join(', ')}) — aucune attribution automatique.`
-      )
+    if (existing?.campaign_id && lockedCampaignIds.has(existing.campaign_id)) {
+      // Déjà rattaché à une campagne verrouillée avant son verrouillage :
+      // jamais reconsidéré (voir commentaire sur campaignWindows ci-dessus).
+      campaignId = existing.campaign_id
     } else {
-      campaignId = matches[0] ?? null
+      const matches = isMetaAcquisitionChannel(appointment.acquisition_channel)
+        ? campaignsMatchingAppointment(campaignWindows, appointment.start_time)
+        : []
+
+      if (matches.length > 1) {
+        // Chevauchement : aucune attribution arbitraire. On préserve la valeur
+        // déjà en base (ou null pour une création) et on journalise l'erreur.
+        campaignId = existing?.campaign_id ?? null
+        errorDetails.push(
+          `Rendez-vous ${appointment.calendly_event_uri} : ${matches.length} campagnes se chevauchent ` +
+            `(${matches.join(', ')}) — aucune attribution automatique.`
+        )
+      } else {
+        campaignId = matches[0] ?? null
+      }
     }
 
     if (campaignId) {

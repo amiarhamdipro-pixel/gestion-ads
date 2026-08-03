@@ -21,6 +21,24 @@ type ChartCampaign = {
 
 type ChartPoint = { campaign_number: number; appointments: number; spend: number; durationLabel: string }
 
+// Nombre de campagnes affichées par page. Avec l'arrivée des campagnes
+// historiques verrouillées (sync_locked), le nombre total de campagnes peut
+// devenir grand — au-delà d'une douzaine de barres, le graphique devient
+// illisible (barres trop fines, libellés qui se chevauchent). page=0
+// (la plus récente) est la seule valeur utilisée pour l'instant : aucune
+// navigation précédente/suivante n'est câblée ici (hors périmètre de cette
+// tâche), mais pageOfPoints ci-dessous est déjà paramétrée par page pour
+// qu'une évolution future n'ait qu'à faire varier cette valeur (ex. via un
+// useState local + deux boutons), sans toucher au reste du composant.
+const PAGE_SIZE = 12
+
+function pageOfPoints(allPoints: ChartPoint[], page: number, pageSize: number): ChartPoint[] {
+  if (allPoints.length <= pageSize) return allPoints
+  const end = allPoints.length - page * pageSize
+  const start = Math.max(0, end - pageSize)
+  return allPoints.slice(start, end)
+}
+
 function barPath(x: number, width: number, top: number, bottom: number, radius: number): string {
   const height = bottom - top
   const r = Math.max(0, Math.min(radius, height / 2, width / 2))
@@ -48,20 +66,24 @@ export default function OverviewChart({
   mode?: OverviewMode
   onModeChange?: (mode: OverviewMode) => void
 }) {
-  const points: ChartPoint[] = []
+  const allPoints: ChartPoint[] = []
   for (const c of campaigns) {
     const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
     const duration = campaignDurationDays(c.start_date, c.end_date)
     const durationLabel = duration !== null ? `${duration} j` : '—'
     if (mode === 'total') {
-      points.push({ campaign_number: c.campaign_number, appointments: realCount, spend: c.meta_spend, durationLabel })
+      allPoints.push({ campaign_number: c.campaign_number, appointments: realCount, spend: c.meta_spend, durationLabel })
       continue
     }
     const appointments = appointmentsPerDay(realCount, duration)
     const spend = spendPerDay(c.meta_spend, duration)
     if (appointments === null || spend === null) continue
-    points.push({ campaign_number: c.campaign_number, appointments, spend, durationLabel })
+    allPoints.push({ campaign_number: c.campaign_number, appointments, spend, durationLabel })
   }
+
+  // page=0 : toujours les PAGE_SIZE campagnes les plus récentes pour
+  // l'instant (voir commentaire sur PAGE_SIZE ci-dessus).
+  const points = pageOfPoints(allPoints, 0, PAGE_SIZE)
 
   const modeToggle = onModeChange ? (
     <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: 999, padding: 3, flexShrink: 0 }}>
@@ -98,7 +120,7 @@ export default function OverviewChart({
     </div>
   )
 
-  if (points.length === 0) {
+  if (allPoints.length === 0) {
     return (
       <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
         {titleRow}
@@ -148,7 +170,10 @@ export default function OverviewChart({
   return (
     <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
       {titleRow}
-      <p style={{ fontSize: 12, color: muted, margin: '2px 0 14px' }}>Par campagne (n° 1 à 20)</p>
+      <p style={{ fontSize: 12, color: muted, margin: '2px 0 14px' }}>
+        Par campagne (n° {points[0].campaign_number} à {points[points.length - 1].campaign_number})
+        {allPoints.length > points.length ? ` — ${points.length} plus récentes sur ${allPoints.length}` : ''}
+      </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 12.5, color: muted, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

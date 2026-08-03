@@ -97,6 +97,9 @@ export type SyncAllCampaignsReport = {
   totalDetected: number
   succeeded: number
   failed: number
+  // Campagnes sync_locked=true détectées côté Meta mais jamais tentées
+  // (référence historique figée) — voir campaigns.sync_locked.
+  skippedLocked: number[]
   invalid: InvalidCampaignGroup[]
   details: CampaignSyncOutcome[]
 }
@@ -123,6 +126,9 @@ export type SyncAllCampaignsDailyStatsReport = {
   // true si l'arrêt anticipé a été déclenché par un code d'erreur Meta 17
   // (limite de débit) : les campagnes non tentées ne sont pas des échecs.
   stoppedOnRateLimit: boolean
+  // Campagnes sync_locked=true détectées côté Meta mais jamais tentées
+  // (référence historique figée) — voir campaigns.sync_locked.
+  skippedLocked: number[]
   invalid: InvalidCampaignGroup[]
   details: CampaignDailyStatsSyncOutcome[]
 }

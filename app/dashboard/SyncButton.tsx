@@ -45,6 +45,9 @@ function summarizeReport(report: SyncAllReport): string[] {
             : ` · ${plural(report.metaDaily.daysUpserted, 'jour')} mis à jour`
           : '')
     )
+    if (t.skippedLocked.length > 0) {
+      lines.push(`${plural(t.skippedLocked.length, 'campagne verrouillée')} ignorée${t.skippedLocked.length > 1 ? 's' : ''} (référence historique figée)`)
+    }
   }
 
   if (report.calendlyAppointments) {
