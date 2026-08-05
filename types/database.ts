@@ -55,6 +55,11 @@ export type Audience = {
   name: string
   meta_spend: number
   meta_pixel_leads: number
+  // Répartition des leads par plateforme — donnée de l'import historique
+  // Excel (lib/import/importHistoricalExcel.ts), jamais renseignée par la
+  // synchro Meta réelle (nullable, migration 20260808000000).
+  facebook_leads: number | null
+  instagram_leads: number | null
   created_at: string
   updated_at: string
 }
@@ -72,15 +77,29 @@ export type Video = {
   // Nullable : non résolu (pub non vidéo, permission refusée...) ou campagne
   // historique jamais resynchronisée (n°1 à 11, renseigné manuellement).
   video_display_name: string | null
-  impressions: number
+  // Nullable depuis la migration 20260808000000 : l'import historique Excel
+  // (lib/import/importHistoricalExcel.ts) ne fournit pas ces compteurs bruts
+  // Meta (aucune colonne équivalente dans le fichier source), seulement des
+  // taux déjà calculés (voir hook_rate_pct/retention_rate_pct ci-dessous).
+  // NULL = donnée réellement absente, jamais 0 (0 impliquerait une vraie
+  // mesure nulle). Toujours un nombre réel pour une vidéo synchronisée via
+  // Meta (lib/sync/mapper.ts, mapAdToVideoInsert, jamais affecté).
+  impressions: number | null
   video_plays: number
-  video_plays_3s: number
-  thruplays: number
+  video_plays_3s: number | null
+  thruplays: number | null
   average_watch_time_seconds: number
-  video_p25: number
-  video_p50: number
-  video_p75: number
-  video_p100: number
+  video_p25: number | null
+  video_p50: number | null
+  video_p75: number | null
+  video_p100: number | null
+  // Taux d'accroche/de rétention déjà calculés (import historique Excel),
+  // en ratio 0-1 comme hookRate()/retentionRate() (lib/calculations.ts) —
+  // utilisés uniquement en repli quand video_plays_3s/impressions/video_p100
+  // ci-dessus sont absents (voir app/dashboard/campaigns/[id]/page.tsx).
+  // Jamais renseignés par la synchro Meta réelle.
+  hook_rate_pct: number | null
+  retention_rate_pct: number | null
   created_at: string
   updated_at: string
 }
@@ -213,15 +232,22 @@ export interface Database {
       }
       audiences: {
         Row: Audience
-        Insert: Partial<Pick<Audience, 'id' | 'created_at' | 'updated_at'>> &
-          Omit<Audience, 'id' | 'created_at' | 'updated_at'>
+        // facebook_leads/instagram_leads optionnels à l'insert : seul
+        // l'import historique Excel les renseigne (lib/import/
+        // importHistoricalExcel.ts) ; la synchro Meta réelle (mapper.ts) les
+        // omet du payload, défaut colonne NULL appliqué à la création.
+        Insert: Partial<Pick<Audience, 'id' | 'created_at' | 'updated_at' | 'facebook_leads' | 'instagram_leads'>> &
+          Omit<Audience, 'id' | 'created_at' | 'updated_at' | 'facebook_leads' | 'instagram_leads'>
         Update: Partial<Audience>
         Relationships: []
       }
       videos: {
         Row: Video
-        Insert: Partial<Pick<Video, 'id' | 'created_at' | 'updated_at'>> &
-          Omit<Video, 'id' | 'created_at' | 'updated_at'>
+        // hook_rate_pct/retention_rate_pct optionnels à l'insert : seul
+        // l'import historique Excel les renseigne (même raison que
+        // facebook_leads/instagram_leads ci-dessus).
+        Insert: Partial<Pick<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct'>> &
+          Omit<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct'>
         Update: Partial<Video>
         Relationships: []
       }

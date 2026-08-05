@@ -186,18 +186,26 @@ async function main(): Promise<void> {
       // voir scripts/test-sync-campaign.ts ou syncCampaign.ts pour la
       // résolution réelle (lib/sync/meta.ts, fetchVideoTitle).
       const video = mapAdToVideoInsert(PLACEHOLDER_AUDIENCE_ID, ad, adInsights, null)
+      // impressions/thruplays/video_p25/video_p100 sont nullables depuis la
+      // migration 20260808000000 (import historique Excel) mais mapper.ts
+      // renvoie toujours un nombre réel côté Meta (jamais null ici) — ??0
+      // uniquement pour satisfaire le typage de ce script de diagnostic.
+      const impressions = video.impressions ?? 0
+      const thruplays = video.thruplays ?? 0
+      const videoP25 = video.video_p25 ?? 0
+      const videoP100 = video.video_p100 ?? 0
 
-      if (video.impressions > 0 || video.video_plays > 0) {
+      if (impressions > 0 || video.video_plays > 0) {
         hasUsableVideoStats = true
       }
 
-      const hookPlay = video.impressions > 0 ? ((video.video_plays / video.impressions) * 100).toFixed(1) : '—'
-      const hookThru = video.impressions > 0 ? ((video.thruplays / video.impressions) * 100).toFixed(1) : '—'
-      const retention = video.video_p25 > 0 ? ((video.video_p100 / video.video_p25) * 100).toFixed(1) : '—'
+      const hookPlay = impressions > 0 ? ((video.video_plays / impressions) * 100).toFixed(1) : '—'
+      const hookThru = impressions > 0 ? ((thruplays / impressions) * 100).toFixed(1) : '—'
+      const retention = videoP25 > 0 ? ((videoP100 / videoP25) * 100).toFixed(1) : '—'
 
       console.log(`    PUB ${ad.name} — id Meta ${ad.id}`)
       console.log(
-        `      Impressions ${video.impressions} · Plays ${video.video_plays} · ThruPlays ${video.thruplays} · ` +
+        `      Impressions ${impressions} · Plays ${video.video_plays} · ThruPlays ${thruplays} · ` +
           `Accroche ${hookPlay}% (play) / ${hookThru}% (thruplay) · Rétention ${retention}%`
       )
     }

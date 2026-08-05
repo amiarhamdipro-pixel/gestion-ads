@@ -45,6 +45,13 @@ function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
 }
 
+// Impressions absentes pour une vidéo issue de l'import historique Excel
+// (voir types/database.ts, Video) : "—" plutôt que 0 (0 impliquerait une
+// vraie mesure nulle, pas une donnée non disponible).
+function formatCount(n: number | null): string {
+  return n === null ? '—' : n.toLocaleString('fr-FR')
+}
+
 // Priorité d'affichage du nom vidéo (voir BRIEF-CLAUDE-CODE.md) :
 // video_display_name (nom réel du fichier importé dans Meta) -> videos.name
 // (nom de la pub Ads Manager) -> repli générique. Jamais d'erreur, jamais de
@@ -142,7 +149,7 @@ export default async function CampaignDetailPage({
   const { data: campaign } = await supabase
     .from('campaigns')
     .select(
-      'id, campaign_number, start_date, end_date, status, published, meta_spend, meta_pixel_leads, manual_appointments_adjustment'
+      'id, campaign_number, start_date, end_date, status, published, sync_locked, meta_spend, meta_pixel_leads, manual_appointments_adjustment'
     )
     .eq('id', id)
     .eq('client_id', profile.client_id)
@@ -205,7 +212,7 @@ export default async function CampaignDetailPage({
 
   const { data: audiences } = await supabase
     .from('audiences')
-    .select('id, audience_type, name, meta_spend, meta_pixel_leads')
+    .select('id, audience_type, name, meta_spend, meta_pixel_leads, facebook_leads, instagram_leads')
     .eq('campaign_id', campaign.id)
     .order('audience_type', { ascending: true })
 
@@ -216,7 +223,7 @@ export default async function CampaignDetailPage({
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100'
+            'id, audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100, hook_rate_pct, retention_rate_pct'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
@@ -498,8 +505,26 @@ export default async function CampaignDetailPage({
               const badgeSoft = isBarbier ? lavender : softBg(violet, 0.14)
               const isBestCostPerLead = bestCostPerLead !== null && audienceCostPerLead === bestCostPerLead
 
-              const hook = video ? hookRate(video.video_plays_3s, video.impressions) : null
-              const retention = video ? retentionRate(video.video_p100, video.video_plays_3s) : null
+              // Priorité d'affichage des taux vidéo (voir BRIEF-CLAUDE-CODE.md) :
+              // campagne historique verrouillée (sync_locked=true) avec un
+              // taux importé du fichier Excel -> ce taux est la référence,
+              // même si d'anciens compteurs Meta bruts sont encore stockés
+              // (campagne n°12 : jamais recalculé depuis impressions/
+              // video_plays_3s/video_p100, qui restent en base mais ne
+              // priment plus visuellement). Sinon -> calcul réel à partir des
+              // compteurs bruts s'ils existent. Sinon -> "—" (aucune donnée).
+              const hook =
+                campaign.sync_locked && video?.hook_rate_pct != null
+                  ? video.hook_rate_pct
+                  : video && video.video_plays_3s !== null && video.impressions !== null
+                    ? hookRate(video.video_plays_3s, video.impressions)
+                    : null
+              const retention =
+                campaign.sync_locked && video?.retention_rate_pct != null
+                  ? video.retention_rate_pct
+                  : video && video.video_p100 !== null && video.video_plays_3s !== null
+                    ? retentionRate(video.video_p100, video.video_plays_3s)
+                    : null
 
               return (
                 <div
@@ -575,13 +600,20 @@ export default async function CampaignDetailPage({
                         >
                           {/* Nom vidéo (prioritaire) : voir videoDisplayName
                               ci-dessus. Nom de la pub Meta conservé visible
-                              mais secondaire (taille/opacité réduites). */}
+                              mais secondaire (taille/opacité réduites) —
+                              seulement s'il diffère réellement du libellé
+                              principal (sinon doublon visuel : quand
+                              video_display_name est absent, videoDisplayName
+                              retombe déjà sur video.name, les deux lignes
+                              seraient identiques). */}
                           <span style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>
                             {videoDisplayName(video)}
                           </span>
-                          <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, opacity: 0.75, marginTop: 2 }}>
-                            {video.name}
-                          </span>
+                          {video.name !== videoDisplayName(video) ? (
+                            <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, opacity: 0.75, marginTop: 2 }}>
+                              {video.name}
+                            </span>
+                          ) : null}
                         </span>
                       </>
                     ) : (
@@ -628,11 +660,21 @@ export default async function CampaignDetailPage({
                   </div>
                 </div>
 
+                {/* Répartition des leads par plateforme : donnée de l'import
+                    historique Excel uniquement (voir types/database.ts,
+                    Audience) — absente (donc masquée) pour toute audience
+                    réellement synchronisée via Meta. */}
+                {audience.facebook_leads !== null || audience.instagram_leads !== null ? (
+                  <p style={{ fontSize: 11.5, color: muted, marginTop: 8, textAlign: 'center' }}>
+                    Facebook : {audience.facebook_leads ?? '—'} · Instagram : {audience.instagram_leads ?? '—'}
+                  </p>
+                ) : null}
+
                 {video ? (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 12 }}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.impressions.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{formatCount(video.impressions)}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Impressions</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>

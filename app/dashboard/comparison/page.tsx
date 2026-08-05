@@ -25,6 +25,7 @@ type CampaignRow = {
   meta_spend: number
   meta_pixel_leads: number
   manual_appointments_adjustment: number
+  sync_locked: boolean
   calendlyAppointments: number
 }
 
@@ -71,7 +72,7 @@ function TopBadge() {
 // filtre de période — partagé par les deux chemins (période active ou non).
 async function computeRankedVideos(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  campaigns: { id: string; campaign_number: number }[]
+  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
 ): Promise<RankedVideo[]> {
   if (campaigns.length === 0) return []
 
@@ -87,7 +88,7 @@ async function computeRankedVideos(
 
   const { data: videoData } = await supabase
     .from('videos')
-    .select('audience_id, meta_ad_id, name, video_display_name, impressions, video_plays_3s')
+    .select('audience_id, meta_ad_id, name, video_display_name, impressions, video_plays_3s, hook_rate_pct')
     .in(
       'audience_id',
       audiences.map((a) => a.id)
@@ -96,7 +97,7 @@ async function computeRankedVideos(
 
   const audienceById = new Map(audiences.map((a) => [a.id, a]))
   const campaignByAudienceId = new Map(audiences.map((a) => [a.id, a.campaign_id]))
-  const campaignNumberById = new Map(campaigns.map((c) => [c.id, c.campaign_number]))
+  const campaignById = new Map(campaigns.map((c) => [c.id, c]))
 
   type VideoGroup = {
     metaAdId: string
@@ -108,6 +109,14 @@ async function computeRankedVideos(
     totalPlays3s: number
     totalSpend: number
     totalLeads: number
+    // Priorité Excel (voir BRIEF-CLAUDE-CODE.md) : vrai seulement si TOUTES
+    // les lignes contribuant au groupe viennent de campagnes historiques
+    // verrouillées avec un taux importé — un groupe mêlant une campagne
+    // dynamique n'utilise jamais ce repli (ses compteurs bruts réels
+    // priment). En pratique un meta_ad_id historique (clé synthétique) est
+    // toujours propre à une seule campagne+audience, jamais partagé.
+    allLockedWithExcelRate: boolean
+    excelHookRatePct: number | null
   }
 
   const groups = new Map<string, VideoGroup>()
@@ -117,13 +126,21 @@ async function computeRankedVideos(
 
     const existing = groups.get(video.meta_ad_id)
     const campaignId = campaignByAudienceId.get(video.audience_id)
-    const campaignNumber = campaignId ? campaignNumberById.get(campaignId) : undefined
+    const campaign = campaignId ? campaignById.get(campaignId) : undefined
+    const campaignNumber = campaign?.campaign_number
+    const rowLockedWithExcelRate = Boolean(campaign?.sync_locked) && video.hook_rate_pct != null
 
+    // impressions/video_plays_3s peuvent être null pour une vidéo issue de
+    // l'import historique Excel (voir types/database.ts, Video) : une
+    // contribution "inconnue" compte pour 0 dans la SOMME du groupe (jamais
+    // stockée comme telle sur la ligne elle-même).
     if (existing) {
-      existing.totalImpressions += video.impressions
-      existing.totalPlays3s += video.video_plays_3s
+      existing.totalImpressions += video.impressions ?? 0
+      existing.totalPlays3s += video.video_plays_3s ?? 0
       existing.totalSpend += audience.meta_spend
       existing.totalLeads += audience.meta_pixel_leads
+      existing.allLockedWithExcelRate = existing.allLockedWithExcelRate && rowLockedWithExcelRate
+      if (rowLockedWithExcelRate) existing.excelHookRatePct = video.hook_rate_pct
       if (campaignNumber !== undefined) existing.campaignNumbers.add(campaignNumber)
     } else {
       groups.set(video.meta_ad_id, {
@@ -132,14 +149,20 @@ async function computeRankedVideos(
         videoDisplayName: video.video_display_name,
         audienceType: audience.audience_type,
         campaignNumbers: new Set(campaignNumber !== undefined ? [campaignNumber] : []),
-        totalImpressions: video.impressions,
-        totalPlays3s: video.video_plays_3s,
+        totalImpressions: video.impressions ?? 0,
+        totalPlays3s: video.video_plays_3s ?? 0,
         totalSpend: audience.meta_spend,
         totalLeads: audience.meta_pixel_leads,
+        allLockedWithExcelRate: rowLockedWithExcelRate,
+        excelHookRatePct: rowLockedWithExcelRate ? video.hook_rate_pct : null,
       })
     }
   }
 
+  // Priorité d'affichage (même règle que app/dashboard/campaigns/[id]/
+  // page.tsx) : campagne(s) historique(s) verrouillée(s) avec un taux Excel
+  // -> ce taux ; sinon -> calcul réel depuis les compteurs bruts agrégés
+  // (division par zéro évitée -> null, "non classable" dans VideoRanking.tsx).
   return Array.from(groups.values()).map((g) => ({
     metaAdId: g.metaAdId,
     name: g.name,
@@ -147,7 +170,7 @@ async function computeRankedVideos(
     campaignCount: g.campaignNumbers.size,
     audienceType: g.audienceType,
     costPerLead: costPerMetaPixelLead(g.totalSpend, g.totalLeads),
-    hookPlay: hookRate(g.totalPlays3s, g.totalImpressions),
+    hookPlay: g.allLockedWithExcelRate && g.excelHookRatePct !== null ? g.excelHookRatePct : hookRate(g.totalPlays3s, g.totalImpressions),
   }))
 }
 
@@ -189,7 +212,7 @@ export default async function ComparisonPage({
   if (resolvedRange) {
     const { data: campaignMetaRaw, error: campaignMetaError } = await supabase
       .from('campaigns')
-      .select('id, campaign_number, published')
+      .select('id, campaign_number, published, sync_locked')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
@@ -430,7 +453,7 @@ export default async function ComparisonPage({
   const { data: campaignData, error: campaignError } = await supabase
     .from('campaigns')
     .select(
-      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, published'
+      'id, campaign_number, start_date, end_date, meta_spend, meta_pixel_leads, manual_appointments_adjustment, published, sync_locked'
     )
     .eq('client_id', profile.client_id)
     .order('campaign_number', { ascending: true })
