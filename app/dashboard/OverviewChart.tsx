@@ -1,14 +1,30 @@
-// Graphe combiné rendez-vous réels (barres) / montant dépensé (courbe). Style
-// épuré inspiré de MAQUETTE-UI.png (padding, légende, double axe) mais
-// représentation par campagne conservée (X = numéro de campagne), pas par
-// date comme dans la maquette : ce n'est pas notre logique métier. SVG fait
-// main (pas de dépendance graphique dans le projet).
+// Graphe combiné rendez-vous réels (barres) / montant dépensé (courbe). SVG
+// fait main (pas de dépendance graphique dans le projet). Deux bascules
+// indépendantes :
+// - Par campagne / Par mois (grouping, état interne à ce composant) : une
+//   barre par campagne (comportement historique) ou une barre par mois
+//   civil (somme des campagnes qui commencent ce mois-ci — aucun nouveau
+//   calcul métier, juste un regroupement/somme des mêmes totaux déjà
+//   affichés en mode "Par campagne").
+// - Totaux / Par jour (mode, prop contrôlée par OverviewSection.tsx, pilote
+//   aussi le tableau des campagnes en dessous) : uniquement pertinente en
+//   grouping="campaign" — une moyenne "par jour" sommée sur plusieurs
+//   campagnes d'un même mois n'aurait pas de sens directement comparable,
+//   donc masquée et forcée à "total" en grouping="month" (le fichier ne
+//   calcule rien de nouveau, il choisit juste quelle donnée déjà existante
+//   afficher).
+//
+// Campagnes historiques (sync_locked) vs dynamiques : ce composant ne lit
+// jamais sync_locked et ne reçoit même pas ce champ — structurellement,
+// aucune différence de rendu n'est possible entre les deux.
 
+import { useState } from 'react'
 import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
-import { indigo, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
+import { chartOrange, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
 import { InfoIcon } from './icons'
 
 export type OverviewMode = 'total' | 'day'
+type Grouping = 'campaign' | 'month'
 
 type ChartCampaign = {
   campaign_number: number
@@ -19,17 +35,26 @@ type ChartCampaign = {
   calendlyAppointments: number
 }
 
-type ChartPoint = { campaign_number: number; appointments: number; spend: number; durationLabel: string }
+// Point générique du graphe : xLabel (ligne du bas, grasse) et xSubLabel
+// (ligne du bas, discrète, optionnelle) portent le libellé selon le
+// groupement actif — numéro de campagne + durée, ou nom de mois seul.
+type ChartPoint = {
+  key: string
+  appointments: number
+  spend: number
+  xLabel: string
+  xSubLabel: string | null
+  tooltipLabel: string
+}
 
-// Nombre de campagnes affichées par page. Avec l'arrivée des campagnes
-// historiques verrouillées (sync_locked), le nombre total de campagnes peut
-// devenir grand — au-delà d'une douzaine de barres, le graphique devient
-// illisible (barres trop fines, libellés qui se chevauchent). page=0
-// (la plus récente) est la seule valeur utilisée pour l'instant : aucune
-// navigation précédente/suivante n'est câblée ici (hors périmètre de cette
-// tâche), mais pageOfPoints ci-dessous est déjà paramétrée par page pour
-// qu'une évolution future n'ait qu'à faire varier cette valeur (ex. via un
-// useState local + deux boutons), sans toucher au reste du composant.
+// Nombre de points affichés par page. Au-delà, le graphique devient
+// illisible (barres trop fines, libellés qui se chevauchent) — voir aussi le
+// mécanisme de largeur minimale/scroll horizontal plus bas, qui protège la
+// lisibilité mobile pour un nombre de points inférieur à ce seuil. page=0
+// (le plus récent) est la seule valeur utilisée pour l'instant : aucune
+// navigation précédente/suivante n'est câblée ici (hors périmètre), mais
+// pageOfPoints reste déjà paramétrée par page pour qu'une évolution future
+// n'ait qu'à faire varier cette valeur.
 const PAGE_SIZE = 12
 
 function pageOfPoints(allPoints: ChartPoint[], page: number, pageSize: number): ChartPoint[] {
@@ -46,8 +71,8 @@ function barPath(x: number, width: number, top: number, bottom: number, radius: 
 }
 
 // Arrondit un maximum brut à un pas "rond" (1/2/5 × 10^n) pour des graduations
-// d'axe lisibles (ex. 500 €, 1000 €... plutôt que 437 €, 874 €...), comme
-// dans MAQUETTE-UI.png. 4 graduations au-dessus de 0 (5 niveaux au total).
+// d'axe lisibles (ex. 500 €, 1000 €... plutôt que 437 €, 874 €...). 4
+// graduations au-dessus de 0 (5 niveaux au total).
 function niceAxisStep(rawMax: number): number {
   if (rawMax <= 0) return 1
   const roughStep = rawMax / 4
@@ -55,6 +80,118 @@ function niceAxisStep(rawMax: number): number {
   const residual = roughStep / magnitude
   const niceResidual = residual > 5 ? 10 : residual > 2 ? 5 : residual > 1 ? 2 : 1
   return niceResidual * magnitude
+}
+
+const FRENCH_MONTHS = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+]
+
+// Regroupement par mois civil de start_date — en chaîne, jamais via Date()
+// (campaigns.start_date est une simple date calendaire "YYYY-MM-DD" ; passer
+// par un objet Date réintroduirait un risque de décalage de fuseau horaire
+// pour rien, alors qu'un découpage de chaîne suffit et reste exact).
+function monthKey(dateStr: string): string {
+  return dateStr.slice(0, 7)
+}
+
+function monthLabel(dateStr: string): string {
+  const year = dateStr.slice(0, 4)
+  const monthIndex = Number(dateStr.slice(5, 7)) - 1
+  return `${FRENCH_MONTHS[monthIndex] ?? '—'} ${year}`
+}
+
+function buildCampaignPoints(campaigns: ChartCampaign[], mode: OverviewMode): ChartPoint[] {
+  const points: ChartPoint[] = []
+  for (const c of campaigns) {
+    const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
+    const duration = campaignDurationDays(c.start_date, c.end_date)
+    const durationLabel = duration !== null ? `${duration} j` : '—'
+
+    let appointments: number | null = realCount
+    let spend: number | null = c.meta_spend
+    if (mode === 'day') {
+      appointments = appointmentsPerDay(realCount, duration)
+      spend = spendPerDay(c.meta_spend, duration)
+    }
+    if (appointments === null || spend === null) continue
+
+    points.push({
+      key: String(c.campaign_number),
+      appointments,
+      spend,
+      xLabel: String(c.campaign_number),
+      xSubLabel: durationLabel,
+      tooltipLabel: `Campagne ${c.campaign_number}`,
+    })
+  }
+  return points
+}
+
+// Toujours des totaux (jamais "par jour" : sommer une moyenne journalière de
+// plusieurs campagnes distinctes n'aurait pas de sens sans inventer une
+// pondération). Une campagne contribue à un seul mois, celui de son
+// start_date — jamais répartie au prorata sur plusieurs mois (ce serait un
+// nouveau calcul métier, hors périmètre).
+function buildMonthPoints(campaigns: ChartCampaign[]): ChartPoint[] {
+  const buckets = new Map<string, { label: string; appointments: number; spend: number }>()
+  for (const c of campaigns) {
+    if (!c.start_date) continue
+    const key = monthKey(c.start_date)
+    const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
+    const existing = buckets.get(key)
+    if (existing) {
+      existing.appointments += realCount
+      existing.spend += c.meta_spend
+    } else {
+      buckets.set(key, { label: monthLabel(c.start_date), appointments: realCount, spend: c.meta_spend })
+    }
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, v]) => ({
+      key,
+      appointments: v.appointments,
+      spend: v.spend,
+      xLabel: v.label,
+      xSubLabel: null,
+      tooltipLabel: v.label,
+    }))
+}
+
+function ToggleGroup<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: 999, padding: 3, flexShrink: 0 }}>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          aria-pressed={value === opt.value}
+          style={{
+            border: 0,
+            borderRadius: 999,
+            padding: '5px 12px',
+            fontSize: 12.5,
+            cursor: 'pointer',
+            background: value === opt.value ? surface : 'transparent',
+            color: value === opt.value ? ink : muted,
+            fontWeight: value === opt.value ? 700 : 500,
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export default function OverviewChart({
@@ -66,66 +203,59 @@ export default function OverviewChart({
   mode?: OverviewMode
   onModeChange?: (mode: OverviewMode) => void
 }) {
-  const allPoints: ChartPoint[] = []
-  for (const c of campaigns) {
-    const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
-    const duration = campaignDurationDays(c.start_date, c.end_date)
-    const durationLabel = duration !== null ? `${duration} j` : '—'
-    if (mode === 'total') {
-      allPoints.push({ campaign_number: c.campaign_number, appointments: realCount, spend: c.meta_spend, durationLabel })
-      continue
-    }
-    const appointments = appointmentsPerDay(realCount, duration)
-    const spend = spendPerDay(c.meta_spend, duration)
-    if (appointments === null || spend === null) continue
-    allPoints.push({ campaign_number: c.campaign_number, appointments, spend, durationLabel })
-  }
+  const [grouping, setGrouping] = useState<Grouping>('campaign')
 
-  // page=0 : toujours les PAGE_SIZE campagnes les plus récentes pour
-  // l'instant (voir commentaire sur PAGE_SIZE ci-dessus).
+  const effectiveMode: OverviewMode = grouping === 'month' ? 'total' : mode
+  const allPoints = grouping === 'month' ? buildMonthPoints(campaigns) : buildCampaignPoints(campaigns, effectiveMode)
+
+  // page=0 : toujours les PAGE_SIZE points les plus récents pour l'instant
+  // (voir commentaire sur PAGE_SIZE ci-dessus).
   const points = pageOfPoints(allPoints, 0, PAGE_SIZE)
 
-  const modeToggle = onModeChange ? (
-    <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: 999, padding: 3, flexShrink: 0 }}>
-      {(['total', 'day'] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => onModeChange(m)}
-          style={{
-            border: 0,
-            borderRadius: 999,
-            padding: '5px 12px',
-            fontSize: 12,
-            cursor: 'pointer',
-            background: mode === m ? surface : 'transparent',
-            fontWeight: mode === m ? 600 : 400,
-          }}
-        >
-          {m === 'total' ? 'Totaux' : 'Par jour'}
-        </button>
-      ))}
-    </div>
-  ) : null
+  const groupingToggle = (
+    <ToggleGroup
+      value={grouping}
+      onChange={setGrouping}
+      options={[
+        { value: 'campaign', label: 'Par campagne' },
+        { value: 'month', label: 'Par mois' },
+      ]}
+    />
+  )
+
+  const modeToggle =
+    grouping === 'campaign' && onModeChange ? (
+      <ToggleGroup
+        value={mode}
+        onChange={onModeChange}
+        options={[
+          { value: 'total', label: 'Totaux' },
+          { value: 'day', label: 'Par jour' },
+        ]}
+      />
+    ) : null
 
   const titleRow = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 15.5, color: ink, margin: 0 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 16, color: ink, margin: 0 }}>
           Évolution des rendez-vous et du dépensé
         </h2>
         <InfoIcon size={14} style={{ color: muted }} />
       </div>
-      {modeToggle}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {groupingToggle}
+        {modeToggle}
+      </div>
     </div>
   )
 
   if (allPoints.length === 0) {
     return (
-      <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+      <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
         {titleRow}
         <div style={{ padding: '28px 0 6px', textAlign: 'center', color: muted, fontSize: 13.5 }}>
-          {mode === 'day' && campaigns.length > 0
+          {grouping === 'campaign' && effectiveMode === 'day' && campaigns.length > 0
             ? 'Aucune campagne avec une durée connue (date de fin non renseignée).'
             : 'Aucune campagne à afficher pour le moment.'}
         </div>
@@ -133,29 +263,28 @@ export default function OverviewChart({
     )
   }
 
-  const appointmentsLabel = mode === 'day' ? 'Rendez-vous / jour' : 'Rendez-vous'
-  const spendLabel = mode === 'day' ? 'Dépensé / jour (€)' : 'Dépensé (€)'
+  const appointmentsLabel = effectiveMode === 'day' ? 'Rendez-vous / jour' : 'Rendez-vous'
+  const spendLabel = effectiveMode === 'day' ? 'Dépensé / jour (€)' : 'Dépensé (€)'
 
   const width = 640
-  const height = 268
-  const marginLeft = 50
-  const marginRight = 40
-  const marginTop = 14
-  const marginBottom = 40
+  const height = 300
+  const marginLeft = 54
+  const marginRight = 44
+  const marginTop = 20
+  const marginBottom = grouping === 'month' ? 40 : 48
   const plotWidth = width - marginLeft - marginRight
   const plotHeight = height - marginTop - marginBottom
   const baseline = marginTop + plotHeight
 
-  // Axe gauche = Dépensé (€), axe droit = Rendez-vous — ordre de
-  // MAQUETTE-UI.png (courbe dépensé calée sur l'axe gauche, barres RDV sur
-  // l'axe droit). 5 graduations (0 à 4×pas), valeurs arrondies lisibles.
+  // Axe gauche = Dépensé (€), axe droit = Rendez-vous. 5 graduations (0 à
+  // 4×pas), valeurs arrondies lisibles.
   const spendStep = niceAxisStep(Math.max(1, ...points.map((p) => p.spend)))
   const spendAxisMax = spendStep * 4
   const apptStep = niceAxisStep(Math.max(1, ...points.map((p) => p.appointments)))
   const apptAxisMax = apptStep * 4
 
   const slot = plotWidth / points.length
-  const barWidth = Math.min(22, slot * 0.44)
+  const barWidth = Math.min(28, slot * 0.5)
 
   const yForAppointments = (appointments: number) => baseline - (appointments / apptAxisMax) * plotHeight
   const yForSpend = (spend: number) => baseline - (spend / spendAxisMax) * plotHeight
@@ -163,117 +292,135 @@ export default function OverviewChart({
 
   const linePoints = points.map((p, i) => `${xCenter(i)},${yForSpend(p.spend)}`).join(' ')
   const fmtSpend = (n: number) => n.toFixed(2).replace('.', ',')
-  const fmtSpendAxis = (n: number) => (mode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR'))
-  const fmtAppointments = (n: number) => (mode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR'))
+  const fmtSpendAxis = (n: number) => (effectiveMode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR'))
+  const fmtAppointments = (n: number) => (effectiveMode === 'day' ? n.toFixed(2).replace('.', ',') : Math.round(n).toLocaleString('fr-FR'))
   const axisLevels = [0, 1, 2, 3, 4]
 
-  return (
-    <div style={{ background: '#FFFFFF', border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
-      {titleRow}
-      <p style={{ fontSize: 12, color: muted, margin: '2px 0 14px' }}>
-        Par campagne (n° {points[0].campaign_number} à {points[points.length - 1].campaign_number})
-        {allPoints.length > points.length ? ` — ${points.length} plus récentes sur ${allPoints.length}` : ''}
-      </p>
+  // Largeur minimale du SVG rendu : protège la lisibilité des barres sur
+  // petit écran (contrainte "ne jamais réduire les barres jusqu'à devenir
+  // illisibles") — en dessous de ce seuil, le conteneur défile
+  // horizontalement (overflowX) plutôt que de comprimer les barres. Les
+  // libellés "Par mois" sont plus longs ("Septembre 2025") qu'un simple
+  // numéro de campagne : seuil par point plus généreux dans ce mode.
+  const minPxPerPoint = grouping === 'month' ? 92 : 50
+  const chartMinWidth = Math.max(width, points.length * minPxPerPoint + marginLeft + marginRight)
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 12.5, color: muted, marginBottom: 14, flexWrap: 'wrap' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
-            <path d="M1 7 L8 4 L14 6 L21 3" fill="none" stroke={indigo} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="14" cy="6" r="2.3" fill={indigo} stroke="#FFFFFF" strokeWidth={1.2} />
+  const subtitle =
+    grouping === 'month'
+      ? `Par mois (${points[0].xLabel} à ${points[points.length - 1].xLabel})`
+      : `Par campagne (n° ${points[0].xLabel} à ${points[points.length - 1].xLabel})` +
+        (allPoints.length > points.length ? ` — ${points.length} plus récentes sur ${allPoints.length}` : '')
+
+  return (
+    <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+      {titleRow}
+      <p style={{ fontSize: 12.5, color: muted, margin: '4px 0 16px' }}>{subtitle}</p>
+
+      {/* Légende : carré plein = RDV (barres), trait = Dépensé (courbe) —
+          couleurs alignées sur celles réellement utilisées ci-dessous. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 22, fontSize: 13, color: ink, marginBottom: 16, flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i style={{ width: 12, height: 12, borderRadius: 3.5, background: violet, display: 'inline-block', flexShrink: 0 }} aria-hidden="true" />
+          {appointmentsLabel}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="20" height="10" viewBox="0 0 20 10" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+            <line x1="1" y1="5" x2="19" y2="5" stroke={chartOrange} strokeWidth={3} strokeLinecap="round" />
           </svg>
           {spendLabel}
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <i style={{ width: 11, height: 11, borderRadius: 3.5, background: violet, display: 'inline-block' }} />
-          {appointmentsLabel}
-        </span>
       </div>
 
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ width: '100%', height: 'auto', display: 'block' }}
-        role="img"
-        aria-label={`${appointmentsLabel} et ${spendLabel.toLowerCase()} par campagne`}
-      >
-        <style>{`
-          .ov-bar, .ov-dot { transition: opacity .15s ease; }
-          .ov-bar:hover, .ov-dot:hover { opacity: .72; }
-        `}</style>
+      <div style={{ overflowX: 'auto' }}>
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          style={{ width: '100%', minWidth: chartMinWidth, height: 'auto', display: 'block' }}
+          role="img"
+          aria-label={`${appointmentsLabel} et ${spendLabel.toLowerCase()} ${grouping === 'month' ? 'par mois' : 'par campagne'}`}
+        >
+          <style>{`
+            .ov-bar, .ov-dot { transition: opacity .15s ease; }
+            .ov-bar:hover, .ov-dot:hover { opacity: .75; }
+          `}</style>
 
-        {axisLevels.map((lvl) => {
-          const y = marginTop + plotHeight * (1 - lvl / 4)
-          return (
-            <g key={lvl}>
-              <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
-              <text x={marginLeft - 8} y={y} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={muted}>
-                {fmtSpendAxis(spendStep * lvl)} €
+          {axisLevels.map((lvl) => {
+            const y = marginTop + plotHeight * (1 - lvl / 4)
+            return (
+              <g key={lvl}>
+                <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
+                <text x={marginLeft - 10} y={y} textAnchor="end" dominantBaseline="middle" fontSize={12} fontWeight={500} fill={ink}>
+                  {fmtSpendAxis(spendStep * lvl)} €
+                </text>
+                <text x={width - marginRight + 10} y={y} textAnchor="start" dominantBaseline="middle" fontSize={12} fontWeight={500} fill={ink}>
+                  {fmtAppointments(apptStep * lvl)}
+                </text>
+              </g>
+            )
+          })}
+
+          {points.map((p, i) => {
+            const top = yForAppointments(p.appointments)
+            const x = xCenter(i) - barWidth / 2
+            return (
+              <path key={p.key} className="ov-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
+                <title>{`${p.tooltipLabel} — ${fmtAppointments(p.appointments)} rendez-vous${effectiveMode === 'day' ? ' / jour' : ''}`}</title>
+              </path>
+            )
+          })}
+          {/* Nombre de RDV affiché directement au-dessus de chaque barre —
+              toujours visible, jamais besoin de survoler (le survol via
+              <title> ci-dessus reste disponible en complément). */}
+          {points.map((p, i) => (
+            <text
+              key={`count-${p.key}`}
+              x={xCenter(i)}
+              y={Math.max(marginTop + 11, yForAppointments(p.appointments) - 8)}
+              textAnchor="middle"
+              fontSize={12.5}
+              fontWeight={700}
+              fill={violet}
+            >
+              {fmtAppointments(p.appointments)}
+            </text>
+          ))}
+
+          <polyline
+            points={linePoints}
+            fill="none"
+            stroke={chartOrange}
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          {points.map((p, i) => (
+            <circle
+              key={p.key}
+              className="ov-dot"
+              cx={xCenter(i)}
+              cy={yForSpend(p.spend)}
+              r={4}
+              fill={chartOrange}
+              stroke={surface}
+              strokeWidth={2}
+            >
+              <title>{`${p.tooltipLabel} — ${fmtSpend(p.spend)} € dépensés${effectiveMode === 'day' ? ' / jour' : ''}`}</title>
+            </circle>
+          ))}
+
+          {points.map((p, i) => (
+            <text key={p.key} x={xCenter(i)} y={height - (p.xSubLabel ? 22 : 12)} textAnchor="middle" fontSize={12.5} fontWeight={600} fill={ink}>
+              {p.xLabel}
+            </text>
+          ))}
+          {points.map((p, i) =>
+            p.xSubLabel ? (
+              <text key={`sub-${p.key}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={10.5} fill={muted}>
+                {p.xSubLabel}
               </text>
-              <text x={width - marginRight + 8} y={y} textAnchor="start" dominantBaseline="middle" fontSize={10} fill={muted}>
-                {fmtAppointments(apptStep * lvl)}
-              </text>
-            </g>
-          )
-        })}
-
-        {points.map((p, i) => {
-          const top = yForAppointments(p.appointments)
-          const x = xCenter(i) - barWidth / 2
-          return (
-            <path key={p.campaign_number} className="ov-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
-              <title>{`Campagne ${p.campaign_number} — ${fmtAppointments(p.appointments)} rendez-vous${mode === 'day' ? ' / jour' : ''}`}</title>
-            </path>
-          )
-        })}
-        {/* Nombre de RDV affiché directement au-dessus de chaque barre — le
-            survol (title ci-dessus) reste inchangé, ceci est en plus. */}
-        {points.map((p, i) => (
-          <text
-            key={`count-${p.campaign_number}`}
-            x={xCenter(i)}
-            y={Math.max(marginTop + 9, yForAppointments(p.appointments) - 6)}
-            textAnchor="middle"
-            fontSize={10.5}
-            fontWeight={700}
-            fill={violet}
-          >
-            {fmtAppointments(p.appointments)}
-          </text>
-        ))}
-
-        <polyline
-          points={linePoints}
-          fill="none"
-          stroke={indigo}
-          strokeWidth={2}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {points.map((p, i) => (
-          <circle
-            key={p.campaign_number}
-            className="ov-dot"
-            cx={xCenter(i)}
-            cy={yForSpend(p.spend)}
-            r={3.6}
-            fill={indigo}
-            stroke="#FFFFFF"
-            strokeWidth={2}
-          >
-            <title>{`Campagne ${p.campaign_number} — ${fmtSpend(p.spend)} € dépensés${mode === 'day' ? ' / jour' : ''}`}</title>
-          </circle>
-        ))}
-
-        {points.map((p, i) => (
-          <text key={p.campaign_number} x={xCenter(i)} y={height - 20} textAnchor="middle" fontSize={11} fill={muted}>
-            {p.campaign_number}
-          </text>
-        ))}
-        {points.map((p, i) => (
-          <text key={`dur-${p.campaign_number}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={9} fill={muted}>
-            {p.durationLabel}
-          </text>
-        ))}
-      </svg>
+            ) : null
+          )}
+        </svg>
+      </div>
     </div>
   )
 }

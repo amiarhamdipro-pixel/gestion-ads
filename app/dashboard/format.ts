@@ -22,6 +22,18 @@ export const amber = '#F59E0B'
 export const red = '#EF4444'
 export const gray = '#6B7280'
 
+// Orange dédié au graphique Vue d'ensemble (courbe "Dépensé", voir
+// OverviewChart.tsx) : le bleu/indigo dominait trop la lecture du graphe
+// combiné RDV+dépensé (deux séries proches en teinte, difficiles à
+// distinguer au premier coup d'œil) — remplacé par cet orange, réservé au
+// graphique principal, jamais utilisé comme accent/navigation (qui reste
+// indigo, "Bleu Amerys"). Choisi (pas la teinte `amber` existante, trop
+// claire : ~2,1:1 sur blanc, illisible) puis vérifié via le validateur de la
+// skill dataviz : #7C3AED (violet, barres RDV) / #C2410C (orange, ici) —
+// séparation CVD (daltonisme) ΔE 32.7 (protan) et contraste ≥3:1 sur
+// surface blanche, tout au vert.
+export const chartOrange = '#C2410C'
+
 // Alias conservés pour les composants existants (mêmes rôles qu'avant,
 // couleurs alignées sur la maquette).
 export const accent = indigo
