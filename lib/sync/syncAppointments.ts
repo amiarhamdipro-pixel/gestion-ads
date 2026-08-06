@@ -141,10 +141,12 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   const supabase = createAdminClient()
   const { events: rawEvents, errors: eventErrors } = await fetchScheduledEvents()
 
-  // skipped compte deux cas : un doublon Calendly au sein du même lot
-  // (défensif — ne devrait pas arriver, statuts actif/annulé disjoints) et,
-  // plus bas, un rendez-vous déjà en base et strictement identique
-  // (isUnchanged). Dans les deux cas, rien n'est envoyé à l'upsert.
+  // skipped compte trois cas : un doublon Calendly au sein du même lot
+  // (défensif — ne devrait pas arriver, statuts actif/annulé disjoints), un
+  // rendez-vous déjà rattaché à une campagne verrouillée (gelé
+  // intégralement, voir plus bas) et un rendez-vous déjà en base et
+  // strictement identique (isUnchanged). Dans les trois cas, rien n'est
+  // envoyé à l'upsert.
   const seen = new Set<string>()
   const dedupedEvents: CalendlyScheduledAppointment[] = []
   let skipped = 0
@@ -229,13 +231,10 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
     throw new Error(`Échec lecture des campagnes : ${campaignsError.message || JSON.stringify(campaignsError)}`)
   }
 
-  // Campagnes sync_locked=true (référence historique figée, voir
-  // campaigns.sync_locked) : exclues de la fenêtre de rattachement pour les
-  // NOUVEAUX rendez-vous (jamais rattachées désormais). Un rendez-vous déjà
-  // rattaché à l'une d'elles avant son verrouillage n'est en revanche jamais
-  // reconsidéré ci-dessous (sinon l'exclure de campaignWindows le ferait
-  // détacher au prochain passage, faute de fenêtre correspondante — l'exact
-  // inverse de "aucune synchro ne modifie ces valeurs").
+  // Campagnes sync_locked=true (verrouillage définitif — publication admin
+  // OU référence historique figée, voir campaigns.sync_locked et
+  // BRIEF-CLAUDE-CODE.md, règle "plus jamais resynchronisée") : exclues de la
+  // fenêtre de rattachement pour les NOUVEAUX rendez-vous ci-dessous.
   const lockedCampaignIds = new Set((campaignRows ?? []).filter((c) => c.sync_locked).map((c) => c.id))
 
   const campaignWindows: CampaignWindow[] = (campaignRows ?? [])
@@ -252,12 +251,23 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   for (const appointment of deduped) {
     const existing = existingByUri.get(appointment.calendly_event_uri)
 
-    let campaignId: string | null
+    // Déjà rattaché à une campagne verrouillée (published=true,
+    // sync_locked=true) : gelé INTÉGRALEMENT, ligne entière jamais réécrite
+    // par une synchro future — même si son statut Calendly a changé depuis
+    // (ex. annulation). "Plus jamais resynchronisée" s'applique à la ligne
+    // entière, pas seulement à campaign_id (voir BRIEF-CLAUDE-CODE.md,
+    // nouvelle règle métier) : sans ce garde, un rendez-vous annulé après
+    // verrouillage ferait quand même passer status='canceled' à l'upsert,
+    // et campaign_daily_stats.calendly_appointments (via
+    // syncCalendlyDailyStats, qui ne compte que status='active') changerait
+    // silencieusement pour une campagne pourtant "figée".
     if (existing?.campaign_id && lockedCampaignIds.has(existing.campaign_id)) {
-      // Déjà rattaché à une campagne verrouillée avant son verrouillage :
-      // jamais reconsidéré (voir commentaire sur campaignWindows ci-dessus).
-      campaignId = existing.campaign_id
-    } else {
+      skipped += 1
+      continue
+    }
+
+    let campaignId: string | null
+    {
       // Rattachement par date de CRÉATION de la réservation
       // (booking_created_at), jamais par start_time (voir en-tête). Sans
       // booking_created_at (rendez-vous pas encore enrichi), aucun
