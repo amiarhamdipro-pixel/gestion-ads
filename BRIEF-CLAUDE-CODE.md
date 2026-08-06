@@ -612,82 +612,124 @@ code a changé depuis) :
   campagne n°20 (resynchronisée seule, aucune autre campagne touchée) :
   `"video 3 - vidéo ciseaux .mp4"` (Barbier) et `"mcc aca pub 3.mp4"`
   (Coiffeur).
-- **Campagnes historiques n°1 à 12 : alimentées par import Excel, plus
-  jamais par Meta/Calendly.** Le classeur externe (`Synthese_KPI_01_12_
-  Detail.xlsx`, hors du dépôt, jamais copié/déplacé dans le projet) devient
-  la source de vérité pour ces 12 campagnes ; `sync_locked=true` sur les
-  12 (déjà vrai avant cet import, reconfirmé) les exclut définitivement de
-  toute synchro Meta ou Calendly future (`lib/sync/syncAllCampaigns.ts`,
-  `syncAllCampaignsDailyStats.ts`, `syncAppointments.ts` — logique
-  inchangée, déjà en place). **Le dernier fichier importé est toujours la
-  référence** : `scripts/import-historical-excel.ts <chemin.xlsx>`
-  retrouve chaque ligne par une clé métier stable — jamais par une clé
-  technique inventée qui risquerait un doublon — (`campaigns` :
-  `client_id`+`campaign_number` ; `audiences` : `campaign_id`+
-  `audience_type` ; `videos` : `audience_id`) et **met à jour** la ligne
-  déjà connue plutôt que d'en créer une nouvelle ; un futur fichier couvrant
-  1→19 remplacera donc simplement les valeurs déjà présentes, jamais un
-  doublon (import testé rejoué deux fois de suite : 0 création la 2e fois).
+- **Campagnes historiques n°1 à 19 : alimentées par import Excel, plus
+  jamais par Meta/Calendly.** Le classeur externe le plus récent
+  (`Synthese_KPI_01_19_Detail.xlsx`, hors du dépôt, jamais copié/déplacé
+  dans le projet) devient la source de vérité pour ces 19 campagnes et
+  **remplace intégralement** les valeurs du précédent fichier 1→12 (aucune
+  ancienne valeur conservée silencieusement) ; `sync_locked=true` sur les 19
+  les exclut définitivement de toute synchro Meta ou Calendly future
+  (`lib/sync/syncAllCampaigns.ts`, `syncAllCampaignsDailyStats.ts`,
+  `syncAppointments.ts` — logique inchangée, déjà en place). **Le dernier
+  fichier importé est toujours la référence** :
+  `scripts/import-historical-excel.ts <chemin.xlsx>` retrouve chaque ligne
+  par une clé métier stable — jamais par une clé technique inventée qui
+  risquerait un doublon — (`campaigns` : `client_id`+`campaign_number` ;
+  `audiences` : `campaign_id`+`audience_type` ; `videos` : `audience_id`) et
+  **met à jour** la ligne déjà connue plutôt que d'en créer une nouvelle ;
+  un futur fichier 1→19 remplacera donc simplement les valeurs déjà
+  présentes, jamais un doublon (import testé rejoué deux fois de suite sur
+  le fichier 1-19 : mêmes 19 campagnes/38 audiences/38 vidéos aux deux
+  passages, 0 création la 2e fois). `MAX_CAMPAIGN_NUMBER` (actuellement 19)
+  borne le périmètre : toute ligne au-delà arrête l'import avant toute
+  écriture (jamais les campagnes 20+, qui restent alimentées par la vraie
+  synchro Meta jusqu'à leur propre verrouillage et publication).
   Lecture du classeur sans dépendance npm ajoutée : `scripts/parse-xlsx.ps1`
   (un `.xlsx` est une archive ZIP de XML, extraite via PowerShell) produit
-  un JSON structuré consommé par le script d'import.
-  - **Années des dates déterminées automatiquement, jamais devinées** : le
-    fichier ne donne que JJ/MM. L'algorithme (`inferYears`) détecte les
-    passages d'année par continuité chronologique (le mois de début d'une
-    ligne redescend sous le mois de fin de la précédente) puis ancre
-    l'ensemble sur la date de début RÉELLE (déjà en base, Meta) de la
-    campagne n°13 — la toute première campagne non couverte par le fichier.
-    Si cette ancre est absente ou la comparaison ambiguë, l'import s'arrête
-    et le signale (jamais de repli sur une année devinée). Résultat vérifié :
-    campagne n°12 se termine le 27/02, jour précédant exactement le début
-    réel de la campagne n°13 (28/02) — cohérence confirmée avant tout écrit.
+  un JSON structuré consommé par le script d'import — `-Encoding UTF8`
+  explicite sur chaque `Get-Content` (bug réel corrigé : Windows PowerShell
+  5.1 lit sinon les XML UTF-8 sans BOM avec l'encodage ANSI de la session,
+  corrompant tout caractère accentué d'un nom de vidéo, ex. "vidéo" ->
+  "vidÃ©o").
+  - **Dates** : le fichier 1-19 stocke `Date debut`/`Date fin` en dates
+    Excel réelles (cellules `date-serial`, année incluse, aucune ambiguïté)
+    — à la différence du fichier 1-12 précédent qui les stockait en texte
+    "JJ/MM" sans année. Les deux formats restent supportés (`resolveDates`,
+    `scripts/import-historical-excel.ts`) : dates Excel → conversion directe
+    (`excelSerialToIso`) puis simple vérification de cohérence chronologique
+    (jamais une détermination, l'année étant déjà connue) ; texte "JJ/MM` →
+    inférence par continuité chronologique ancrée sur la date de début
+    RÉELLE (déjà en base, Meta) de la première campagne qui suit le fichier
+    — jamais devinée sans preuve. Dans les deux cas, si la dernière ligne du
+    fichier se termine APRÈS le début de cette campagne-ancre (chevauchement
+    réel), l'import s'arrête et le signale ; l'égalité stricte le même jour
+    est en revanche acceptée (cas réel confirmé : la campagne n°19 se
+    termine le 18/07, jour même où la campagne n°20 réelle commence).
+    Résultat vérifié de façon indépendante : la campagne n°13 commence le
+    28/02 dans le fichier — exactement la valeur déjà en base, sourcée Meta
+    avant tout import Excel.
   - **Cellule vide = NULL, jamais 0** : `stringCell`/`numberCell`
     (`scripts/import-historical-excel.ts`) ne renvoient jamais de valeur par
     défaut inventée. Le fichier ne fournit pas les compteurs Meta bruts par
     vidéo (`impressions`, `video_plays_3s`, `thruplays`, `video_p25/50/75/
     100`) pour les campagnes qui n'avaient encore aucune ligne vidéo réelle
-    (n°1 à 11) : ces colonnes sont devenues nullables (migration
+    avant leur verrouillage : ces colonnes sont nullables (migration
     `20260808000000_historical_excel_import.sql`) plutôt que d'y écrire 0.
     Le fichier fournit en revanche des taux déjà calculés (`Accroche %`/
     `Retention %`) : stockés tels quels dans `videos.hook_rate_pct`/
     `retention_rate_pct` (ratio 0-1, même convention que `hookRate()`/
     `retentionRate()`, `lib/calculations.ts` — non modifié). **Priorité
-    d'affichage de ces taux (règle corrigée)** : pour une campagne historique
-    verrouillée (`campaign.sync_locked=true`) dont `hook_rate_pct`/
-    `retention_rate_pct` sont renseignés, ce sont ces valeurs Excel qui
-    s'affichent — **même si d'anciens compteurs Meta bruts existent encore**
-    (campagne n°12, qui avait déjà de vraies lignes vidéo avant l'import) :
-    le fichier Excel est la source de vérité complète pour 1 à 12, il ne cède
-    jamais le pas à un ancien calcul Meta. Pour une campagne dynamique
-    (`sync_locked=false`, ex. n°20), c'est l'inverse : toujours le calcul réel
-    depuis les compteurs bruts (`hook_rate_pct`/`retention_rate_pct` n'y sont
-    de toute façon jamais renseignés par la synchro Meta). Si aucune des deux
-    sources n'existe, `"—"`. Implémenté dans `app/dashboard/campaigns/[id]/
-    page.tsx` (par vidéo) et `app/dashboard/comparison/page.tsx`
-    (`computeRankedVideos`, par groupe — un groupe historique n'est jamais
-    partagé avec une campagne dynamique en pratique, clé technique unique par
-    campagne+audience). Les compteurs bruts Meta de la campagne n°12
-    (`impressions`, `video_plays_3s`, `video_p100`) restent stockés tels
-    quels, jamais écrasés ni supprimés — seule leur priorité *visuelle*
-    change. Répartition des leads par plateforme
-    (`audiences.facebook_leads`/`instagram_leads`, même migration) affichée
-    de la même façon, absente pour toute audience Meta réelle.
+    d'affichage** : pour une campagne historique verrouillée
+    (`campaign.sync_locked=true`) dont `hook_rate_pct`/`retention_rate_pct`
+    sont renseignés, ce sont ces valeurs Excel qui s'affichent — **même si
+    d'anciens compteurs Meta bruts existent encore** (campagnes n°12 et
+    n°19, qui avaient déjà de vraies lignes vidéo réelles avant d'être
+    verrouillées) : le fichier Excel est la source de vérité complète pour
+    1 à 19, il ne cède jamais le pas à un ancien calcul Meta. Pour une
+    campagne dynamique (`sync_locked=false`, ex. n°20/21), c'est l'inverse :
+    toujours le calcul réel depuis les compteurs bruts (`hook_rate_pct`/
+    `retention_rate_pct` n'y sont de toute façon jamais renseignés par la
+    synchro Meta). Si aucune des deux sources n'existe, `"—"`. Implémenté
+    dans `app/dashboard/campaigns/[id]/page.tsx` (par vidéo) et
+    `app/dashboard/comparison/page.tsx` (`computeRankedVideos`, par groupe —
+    un groupe historique n'est jamais partagé avec une campagne dynamique en
+    pratique, clé technique unique par campagne+audience). Les compteurs
+    bruts Meta déjà stockés restent tels quels, jamais écrasés ni
+    supprimés — seule leur priorité *visuelle* change.
+  - **Répartition des leads par plateforme et par genre × tranche d'âge,
+    AU NIVEAU DE L'AUDIENCE** (Barbier/Coiffeur séparément, jamais au niveau
+    campagne) : `audiences.facebook_leads`/`instagram_leads` (migration
+    20260808000000) et `audiences.leads_male_18_24` .. `leads_female_45_54`
+    (8 colonnes, migration `20260809000000_audiences_age_gender_breakdown.sql`
+    — nouvelles dans le fichier 1-19). Aucune destination existante ne
+    correspondait à cette granularité : `appointment_breakdowns` reste au
+    niveau CAMPAGNE, sans genre, avec un palier "55 et +" que ces 4 tranches
+    n'ont pas — jamais réutilisé, jamais d'agrégation/répartition arbitraire
+    pour la faire rentrer dans ce schéma plus grossier (`appointment_breakdowns`
+    non touché par cet import, réservé aux campagnes dynamiques via
+    `mapAgeInsightsToBreakdownInsert`, `lib/sync/mapper.ts`). Affiché sous
+    chaque carte audience (`app/dashboard/campaigns/[id]/page.tsx`), absent
+    pour toute audience Meta réelle.
+  - **`videos.name` = titre exact du fichier vidéo, extension comprise si
+    présente** (colonnes `Video Barber`/`Video Coiffeur`) : remplace
+    systématiquement l'ancienne valeur, y compris pour les campagnes déjà
+    réellement synchronisées via Meta avant leur verrouillage (n°12, n°19).
   - **RDV Calendly historique = `manual_appointments_adjustment`** (jamais
     de fausse ligne `appointments`) : la colonne "RDV Calendly" du fichier
     devient `campaign.manual_appointments_adjustment = RDV_Excel −
     (rendez-vous actifs déjà réellement rattachés à cette campagne)` — une
-    formule générique, pas un cas particulier par campagne. Pour les
-    campagnes n°1 à 11 (0 rendez-vous réel) l'ajustement vaut directement la
-    valeur du fichier. Pour la campagne n°12 (34 rendez-vous Calendly réels
-    déjà rattachés avant ce changement), la formule donne 40 − 34 = 6 —
-    exactement la valeur déjà en base avant cet import, confirmant sa
-    validité sans avoir eu besoin de traiter ce cas à part.
-  - **Campagnes 13 et suivantes strictement non concernées** : le script
-    arrête l'import (aucune écriture) si une ligne du fichier référence une
-    campagne au-delà de `MAX_CAMPAIGN_NUMBER` (12 pour cet incrément).
-  - Aucune tranche d'âge dans ce fichier (`appointment_breakdowns` non
-    touché, confirmé absent du classeur — cohérent avec l'absence déjà
-    documentée côté Calendly).
+    formule générique, pas un cas particulier par campagne. Vérifiée sur les
+    deux campagnes ayant de vrais rendez-vous Calendly déjà rattachés avant
+    verrouillage : n°12 (34 réels, formule 40−34=6) et n°19 (23 réels,
+    formule 25−23=2) — dans les deux cas exactement la valeur déjà en base,
+    confirmant la formule sans traitement au cas par cas.
+  - **Coût/lead (CPL Barber/Coiffeur du fichier)** : jamais stocké
+    séparément, le dashboard continue de le dériver de `meta_spend÷
+    meta_pixel_leads` (formule déjà existante, `costPerMetaPixelLead`,
+    inchangée) — le CPL du fichier concorde avec ce ratio sur la quasi-
+    totalité des lignes (écart < 0,01€, arrondi), à l'exception de quelques
+    lignes isolées où `Depenses`/`Leads` valent 0 pendant que le fichier
+    donne un CPL non nul (incohérence déjà présente dans le fichier source,
+    jamais corrigée unilatéralement — signalée, pas invisible).
+  - **Anomalie corrigée avec confirmation explicite** : la cellule "Leads
+    Coiffeur" de la campagne n°13 valait 30,95 dans le fichier 1-19 (nombre
+    de leads fractionnaire, impossible) alors que Facebook+Instagram
+    Coiffeur et la somme des 8 colonnes âge×genre de la même ligne
+    concordaient tous deux sur 9 — corrigée à 9 après confirmation explicite
+    de l'utilisateur (`MANUAL_OVERRIDES`,
+    `scripts/import-historical-excel.ts` : jamais appliqué automatiquement,
+    toujours journalisé en clair). Aucune autre anomalie de ce type
+    (fractionnaire) détectée sur les 19 campagnes.
 - **Bouton admin unique « Synchroniser » remplaçant les deux boutons Meta/
   Calendly séparés** (`SyncButton.tsx`, `app/api/admin/sync/all/route.ts`) :
   un clic déclenche les 4 étapes déjà validées, dans cet ordre strict et sans

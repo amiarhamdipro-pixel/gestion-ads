@@ -82,11 +82,6 @@ function niceAxisStep(rawMax: number): number {
   return niceResidual * magnitude
 }
 
-const FRENCH_MONTHS = [
-  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
-]
-
 // Regroupement par mois civil de start_date — en chaîne, jamais via Date()
 // (campaigns.start_date est une simple date calendaire "YYYY-MM-DD" ; passer
 // par un objet Date réintroduirait un risque de décalage de fuseau horaire
@@ -95,10 +90,13 @@ function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7)
 }
 
+// Format compact MM/YY (ex. "08/25") — évite le chevauchement des libellés
+// sur l'axe en mode "Par mois" (les noms de mois complets étaient trop longs
+// une fois plusieurs points affichés côte à côte).
 function monthLabel(dateStr: string): string {
-  const year = dateStr.slice(0, 4)
-  const monthIndex = Number(dateStr.slice(5, 7)) - 1
-  return `${FRENCH_MONTHS[monthIndex] ?? '—'} ${year}`
+  const yearShort = dateStr.slice(2, 4)
+  const month = dateStr.slice(5, 7)
+  return `${month}/${yearShort}`
 }
 
 function buildCampaignPoints(campaigns: ChartCampaign[], mode: OverviewMode): ChartPoint[] {
@@ -300,9 +298,10 @@ export default function OverviewChart({
   // petit écran (contrainte "ne jamais réduire les barres jusqu'à devenir
   // illisibles") — en dessous de ce seuil, le conteneur défile
   // horizontalement (overflowX) plutôt que de comprimer les barres. Les
-  // libellés "Par mois" sont plus longs ("Septembre 2025") qu'un simple
-  // numéro de campagne : seuil par point plus généreux dans ce mode.
-  const minPxPerPoint = grouping === 'month' ? 92 : 50
+  // libellés "Par mois" sont désormais compacts ("08/25"), mais restent
+  // légèrement plus larges qu'un simple numéro de campagne : seuil par point
+  // un peu plus généreux dans ce mode.
+  const minPxPerPoint = grouping === 'month' ? 58 : 50
   const chartMinWidth = Math.max(width, points.length * minPxPerPoint + marginLeft + marginRight)
 
   const subtitle =

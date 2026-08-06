@@ -6,6 +6,12 @@
 # Utilisé pour l'import historique (voir BRIEF-CLAUDE-CODE.md) : lit
 # uniquement la PREMIÈRE feuille du classeur (suffisant pour un export KPI
 # mono-feuille ; à étendre si un futur fichier source en contient plusieurs).
+#
+# -Encoding UTF8 explicite sur chaque Get-Content : les XML OOXML sont en
+# UTF-8 sans BOM ; Windows PowerShell 5.1 les lit sinon avec l'encodage ANSI
+# de la session, corrompant tout caractère accentué (ex. "vidéo" -> "vidÃ©o")
+# — bug réel détecté sur un nom de vidéo importé (Synthese_KPI_01_19), corrigé
+# ici pour toute chaîne lue par ce script (noms de vidéo, en-têtes...).
 param(
   [Parameter(Mandatory = $true)][string]$XlsxPath,
   [Parameter(Mandatory = $true)][string]$OutJson
@@ -23,20 +29,20 @@ try {
   $extractDir = Join-Path $workDir 'extracted'
   Expand-Archive -Path $zipCopy -DestinationPath $extractDir -Force
 
-  [xml]$wb = Get-Content -Raw (Join-Path $extractDir 'xl\workbook.xml')
+  [xml]$wb = Get-Content -Raw -Encoding UTF8 (Join-Path $extractDir 'xl\workbook.xml')
   $sheetName = $wb.workbook.sheets.sheet[0].name
   if (-not $sheetName) { $sheetName = $wb.workbook.sheets.sheet.name }
 
   $sstPath = Join-Path $extractDir 'xl\sharedStrings.xml'
   $sharedStrings = @()
   if (Test-Path $sstPath) {
-    [xml]$sst = Get-Content -Raw $sstPath
+    [xml]$sst = Get-Content -Raw -Encoding UTF8 $sstPath
     if ($sst.sst.si) {
       foreach ($si in $sst.sst.si) { $sharedStrings += $si.InnerText }
     }
   }
 
-  [xml]$styles = Get-Content -Raw (Join-Path $extractDir 'xl\styles.xml')
+  [xml]$styles = Get-Content -Raw -Encoding UTF8 (Join-Path $extractDir 'xl\styles.xml')
   $customNumFmts = @{}
   if ($styles.styleSheet.numFmts) {
     foreach ($nf in $styles.styleSheet.numFmts.numFmt) { $customNumFmts[[int]$nf.numFmtId] = $nf.formatCode }
@@ -62,7 +68,7 @@ try {
     return $idx - 1
   }
 
-  [xml]$sheet = Get-Content -Raw (Join-Path $extractDir 'xl\worksheets\sheet1.xml')
+  [xml]$sheet = Get-Content -Raw -Encoding UTF8 (Join-Path $extractDir 'xl\worksheets\sheet1.xml')
   $rows = @()
   foreach ($row in $sheet.worksheet.sheetData.row) {
     $rowNum = [int]$row.r

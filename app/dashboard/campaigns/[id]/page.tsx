@@ -45,13 +45,6 @@ function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
 }
 
-// Impressions absentes pour une vidéo issue de l'import historique Excel
-// (voir types/database.ts, Video) : "—" plutôt que 0 (0 impliquerait une
-// vraie mesure nulle, pas une donnée non disponible).
-function formatCount(n: number | null): string {
-  return n === null ? '—' : n.toLocaleString('fr-FR')
-}
-
 // Priorité d'affichage du nom vidéo (voir BRIEF-CLAUDE-CODE.md) :
 // video_display_name (nom réel du fichier importé dans Meta) -> videos.name
 // (nom de la pub Ads Manager) -> repli générique. Jamais d'erreur, jamais de
@@ -130,6 +123,24 @@ function buildAgeBreakdown(row: AgeBreakdownRow | null): ChannelBreakdown[] {
     ratio: row[bucket.key] / total,
   }))
 }
+
+// Répartition des leads par genre x tranche d'âge, AU NIVEAU DE L'AUDIENCE
+// (Barbier/Coiffeur séparément) — donnée de l'import historique Excel
+// uniquement (migration 20260809000000), jamais renseignée par la synchro
+// Meta réelle. Distincte de AGE_BUCKETS/buildAgeBreakdown ci-dessus, qui
+// reste au niveau CAMPAGNE, sans genre, et avec un palier "55 et +" que ces
+// 4 tranches n'ont pas — les deux sources ne se recouvrent jamais, jamais
+// fusionnées.
+const AUDIENCE_AGE_GENDER_BUCKETS = [
+  { key: 'leads_male_18_24', label: 'H 18-24' },
+  { key: 'leads_male_25_34', label: 'H 25-34' },
+  { key: 'leads_male_35_44', label: 'H 35-44' },
+  { key: 'leads_male_45_54', label: 'H 45-54' },
+  { key: 'leads_female_18_24', label: 'F 18-24' },
+  { key: 'leads_female_25_34', label: 'F 25-34' },
+  { key: 'leads_female_35_44', label: 'F 35-44' },
+  { key: 'leads_female_45_54', label: 'F 45-54' },
+] as const
 
 type DonutSegment = { color: string; dasharray: string; dashoffset: number }
 
@@ -223,6 +234,19 @@ export default async function CampaignDetailPage({
 
   const activeAppointments = activeAppointmentRows ?? []
 
+  // Chargée ici (avant le donut ci-dessous) car nécessaire aux deux : le
+  // donut Facebook/Instagram d'une campagne historique en dérive
+  // directement (facebook_leads/instagram_leads), voir plus bas.
+  const { data: audiences } = await supabase
+    .from('audiences')
+    .select(
+      'id, audience_type, name, meta_spend, meta_pixel_leads, facebook_leads, instagram_leads, leads_male_18_24, leads_male_25_34, leads_male_35_44, leads_male_45_54, leads_female_18_24, leads_female_25_34, leads_female_35_44, leads_female_45_54'
+    )
+    .eq('campaign_id', campaign.id)
+    .order('audience_type', { ascending: true })
+
+  const audienceIds = (audiences ?? []).map((a) => a.id)
+
   // Période active : la répartition par canal ne porte que sur les
   // rendez-vous dont la date métier (Europe/Paris) tombe dans la période —
   // cohérent avec le KPI "RDV confirmés" ci-dessous, lui-même basé sur
@@ -234,39 +258,56 @@ export default async function CampaignDetailPage({
       })
     : activeAppointments
 
-  const channelBreakdown = groupByAcquisitionChannel(channelSourceAppointments.map((a) => a.acquisition_channel))
+  // Campagne historique verrouillée : aucun rendez-vous Calendly réel n'est
+  // jamais rattaché (voir BRIEF-CLAUDE-CODE.md), donc channelBreakdown serait
+  // toujours vide et le donut ne montrerait que l'ajustement manuel — plus
+  // représentatif ni utile. Remplacé par la répartition Facebook/Instagram
+  // réellement fournie par le fichier Excel, au niveau audience
+  // (Facebook Barber+Coiffeur / Instagram Barber+Coiffeur), jamais
+  // "Ajustement manuel" pour ces campagnes. Campagne dynamique : logique
+  // canal d'acquisition réelle inchangée.
+  const channelBreakdown = campaign.sync_locked
+    ? (() => {
+        const facebook = (audiences ?? []).reduce((sum, a) => sum + (a.facebook_leads ?? 0), 0)
+        const instagram = (audiences ?? []).reduce((sum, a) => sum + (a.instagram_leads ?? 0), 0)
+        const rows: ChannelBreakdown[] = []
+        const total = facebook + instagram
+        if (total > 0 && facebook > 0) rows.push({ channel: 'Facebook', count: facebook, ratio: facebook / total })
+        if (total > 0 && instagram > 0) rows.push({ channel: 'Instagram', count: instagram, ratio: instagram / total })
+        return rows
+      })()
+    : groupByAcquisitionChannel(channelSourceAppointments.map((a) => a.acquisition_channel))
 
   // manual_appointments_adjustment est un correctif global à la campagne,
   // sans date ni canal associés — jamais appliqué à une période (même règle
-  // qu'ailleurs, voir BRIEF-CLAUDE-CODE.md). Uniquement pertinent hors
-  // période, où le KPI "RDV confirmés" l'inclut : affiché comme ligne à part
-  // (jamais fondu dans un canal réel) pour que la somme du détail reste
+  // qu'ailleurs, voir BRIEF-CLAUDE-CODE.md), et jamais affiché pour une
+  // campagne historique (le donut n'y montre plus que Facebook/Instagram,
+  // voir ci-dessus). Uniquement pertinent hors période pour une campagne
+  // dynamique, où le KPI "RDV confirmés" l'inclut : affiché comme ligne à
+  // part (jamais fondu dans un canal réel) pour que la somme du détail reste
   // strictement égale au KPI.
-  const manualAdjustmentForBreakdown = resolvedRange ? 0 : campaign.manual_appointments_adjustment
+  const manualAdjustmentForBreakdown = campaign.sync_locked || resolvedRange ? 0 : campaign.manual_appointments_adjustment
   const channelTotal = channelBreakdown.reduce((sum, row) => sum + row.count, 0)
   const breakdownGrandTotal = channelTotal + manualAdjustmentForBreakdown
 
-  // Répartition des leads Meta par tranche d'âge : une ligne par campagne
-  // (clé unique campaign_id, voir appointment_breakdowns) ou aucune si la
-  // campagne n'a jamais été synchronisée avec ce breakdown (jamais le cas
-  // pour une campagne historique sync_locked=true — voir lib/sync/syncCampaign.ts,
-  // qui n'est appelé que pour les campagnes non verrouillées).
-  const { data: ageBreakdownRow } = await supabase
-    .from('appointment_breakdowns')
-    .select('age_18_24, age_25_34, age_35_44, age_45_54, age_55_plus')
-    .eq('campaign_id', campaign.id)
-    .maybeSingle()
+  // Répartition des leads Meta par tranche d'âge : UNIQUEMENT pour une
+  // campagne dynamique (appointment_breakdowns est une table alimentée par
+  // la synchro Meta réelle, lib/sync/syncCampaign.ts — jamais appelée pour
+  // une campagne verrouillée, voir BRIEF-CLAUDE-CODE.md). Pour une campagne
+  // historique, la répartition par âge existe déjà, à un niveau plus
+  // précis (par audience x genre), affichée dans chaque carte Barbier/
+  // Coiffeur ci-dessous — cette table n'est ni interrogée ni utilisée ici
+  // pour elles.
+  const { data: ageBreakdownRow } = campaign.sync_locked
+    ? { data: null }
+    : await supabase
+        .from('appointment_breakdowns')
+        .select('age_18_24, age_25_34, age_35_44, age_45_54, age_55_plus')
+        .eq('campaign_id', campaign.id)
+        .maybeSingle()
 
   const ageBreakdown = buildAgeBreakdown(ageBreakdownRow)
   const ageBreakdownTotal = ageBreakdown.reduce((sum, row) => sum + row.count, 0)
-
-  const { data: audiences } = await supabase
-    .from('audiences')
-    .select('id, audience_type, name, meta_spend, meta_pixel_leads, facebook_leads, instagram_leads')
-    .eq('campaign_id', campaign.id)
-    .order('audience_type', { ascending: true })
-
-  const audienceIds = (audiences ?? []).map((a) => a.id)
 
   const { data: videos } =
     audienceIds.length > 0
@@ -401,22 +442,26 @@ export default async function CampaignDetailPage({
           value={duration !== null ? `${duration} j` : '—'}
           foot={duration === null ? 'non disponible' : 'campagne entière'}
         />
-        <KpiCard
-          icon={<TrendingUpIcon size={20} />}
-          iconColor={gray}
-          iconBg={softBg(gray, 0.12)}
-          label="Leads Meta"
-          value={String(metaPixelLeadsForKpis)}
-          foot="conversions pixel"
-        />
-        <KpiCard
-          icon={<DollarIcon size={20} />}
-          iconColor={gray}
-          iconBg={softBg(gray, 0.12)}
-          label="Coût / lead"
-          value={formatCost(costPerLead)}
-          foot="dépensé ÷ leads Meta (pixel)"
-        />
+        {isAdmin ? (
+          <KpiCard
+            icon={<TrendingUpIcon size={20} />}
+            iconColor={gray}
+            iconBg={softBg(gray, 0.12)}
+            label="Leads Meta"
+            value={String(metaPixelLeadsForKpis)}
+            foot="conversions pixel"
+          />
+        ) : null}
+        {isAdmin ? (
+          <KpiCard
+            icon={<DollarIcon size={20} />}
+            iconColor={gray}
+            iconBg={softBg(gray, 0.12)}
+            label="Coût / lead"
+            value={formatCost(costPerLead)}
+            foot="dépensé ÷ leads Meta (pixel)"
+          />
+        ) : null}
         {isAdmin ? (
           <KpiCard
             icon={<TrackingIcon size={20} />}
@@ -430,12 +475,16 @@ export default async function CampaignDetailPage({
       </div>
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Rendez-vous par canal d&apos;acquisition</h2>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+          {campaign.sync_locked ? 'Leads par plateforme (Facebook / Instagram)' : "Rendez-vous par canal d'acquisition"}
+        </h2>
       </div>
 
       {breakdownGrandTotal === 0 ? (
         <p style={{ color: muted }}>
-          Aucun rendez-vous confirmé pour cette campagne{resolvedRange ? ' sur cette période' : ''}.
+          {campaign.sync_locked
+            ? 'Aucune donnée Facebook/Instagram pour cette campagne.'
+            : `Aucun rendez-vous confirmé pour cette campagne${resolvedRange ? ' sur cette période' : ''}.`}
         </p>
       ) : (
         <div
@@ -450,7 +499,18 @@ export default async function CampaignDetailPage({
             alignItems: 'center',
           }}
         >
-          <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${channelTotal} rendez-vous répartis par canal d'acquisition`}>
+          <svg
+            width={140}
+            height={140}
+            viewBox="0 0 140 140"
+            style={{ flexShrink: 0 }}
+            role="img"
+            aria-label={
+              campaign.sync_locked
+                ? `${channelTotal} leads répartis par plateforme`
+                : `${channelTotal} rendez-vous répartis par canal d'acquisition`
+            }
+          >
             <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
             {donutSegments(channelBreakdown, channelTotal, 54).map((seg, i) => (
               <circle
@@ -470,7 +530,7 @@ export default async function CampaignDetailPage({
               {breakdownGrandTotal}
             </text>
             <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
-              RDV
+              {campaign.sync_locked ? 'leads' : 'RDV'}
             </text>
           </svg>
 
@@ -518,82 +578,92 @@ export default async function CampaignDetailPage({
         </div>
       )}
 
-      <div style={{ marginTop: 32, marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
-          Répartition des leads Meta par tranche d&apos;âge
-          {resolvedRange ? (
-            <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
-          ) : null}
-        </h2>
-        {resolvedRange ? (
-          <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
-            Pas de détail journalier par tranche d&apos;âge — ces chiffres portent sur toute la durée de la
-            campagne, pas sur la période sélectionnée.
-          </p>
-        ) : null}
-      </div>
-
-      {ageBreakdownTotal === 0 ? (
-        <p style={{ color: muted }}>Aucun lead Meta avec tranche d&apos;âge connue pour cette campagne.</p>
-      ) : (
-        <div
-          style={{
-            background: surface,
-            border: `1px solid ${line}`,
-            borderRadius: radius,
-            padding: 20,
-            display: 'flex',
-            gap: 28,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
-          <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${ageBreakdownTotal} leads Meta répartis par tranche d'âge`}>
-            <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
-            {donutSegments(ageBreakdown, ageBreakdownTotal, 54).map((seg, i) => (
-              <circle
-                key={ageBreakdown[i].channel}
-                cx={70}
-                cy={70}
-                r={54}
-                fill="none"
-                stroke={seg.color}
-                strokeWidth={18}
-                strokeDasharray={seg.dasharray}
-                strokeDashoffset={seg.dashoffset}
-                transform="rotate(-90 70 70)"
-              />
-            ))}
-            <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
-              {ageBreakdownTotal}
-            </text>
-            <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
-              leads
-            </text>
-          </svg>
-
-          <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {ageBreakdown.map((row, i) => (
-              <div key={row.channel} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 3,
-                    background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{row.channel}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{row.count}</span>
-                <span style={{ fontSize: 12.5, color: muted, minWidth: 50, textAlign: 'right' }}>
-                  {formatPct(row.count / ageBreakdownTotal)}
-                </span>
-              </div>
-            ))}
+      {/* Répartition par tranche d'âge (appointment_breakdowns, niveau
+          campagne) : UNIQUEMENT pour une campagne dynamique — voir le
+          commentaire sur ageBreakdownRow plus haut. Pour une campagne
+          historique, cette table n'est ni interrogée ni affichée ; la
+          répartition par âge existe déjà, plus précise (par audience x
+          genre), dans chaque carte Barbier/Coiffeur ci-dessous. */}
+      {!campaign.sync_locked ? (
+        <>
+          <div style={{ marginTop: 32, marginBottom: 16 }}>
+            <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+              Répartition des leads Meta par tranche d&apos;âge
+              {resolvedRange ? (
+                <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
+              ) : null}
+            </h2>
+            {resolvedRange ? (
+              <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
+                Pas de détail journalier par tranche d&apos;âge — ces chiffres portent sur toute la durée de la
+                campagne, pas sur la période sélectionnée.
+              </p>
+            ) : null}
           </div>
-        </div>
-      )}
+
+          {ageBreakdownTotal === 0 ? (
+            <p style={{ color: muted }}>Aucun lead Meta avec tranche d&apos;âge connue pour cette campagne.</p>
+          ) : (
+            <div
+              style={{
+                background: surface,
+                border: `1px solid ${line}`,
+                borderRadius: radius,
+                padding: 20,
+                display: 'flex',
+                gap: 28,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${ageBreakdownTotal} leads Meta répartis par tranche d'âge`}>
+                <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
+                {donutSegments(ageBreakdown, ageBreakdownTotal, 54).map((seg, i) => (
+                  <circle
+                    key={ageBreakdown[i].channel}
+                    cx={70}
+                    cy={70}
+                    r={54}
+                    fill="none"
+                    stroke={seg.color}
+                    strokeWidth={18}
+                    strokeDasharray={seg.dasharray}
+                    strokeDashoffset={seg.dashoffset}
+                    transform="rotate(-90 70 70)"
+                  />
+                ))}
+                <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
+                  {ageBreakdownTotal}
+                </text>
+                <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
+                  leads
+                </text>
+              </svg>
+
+              <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {ageBreakdown.map((row, i) => (
+                  <div key={row.channel} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 3,
+                        background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{row.channel}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{row.count}</span>
+                    <span style={{ fontSize: 12.5, color: muted, minWidth: 50, textAlign: 'right' }}>
+                      {formatPct(row.count / ageBreakdownTotal)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
         <h2 style={{ fontWeight: 700, fontSize: 17 }}>
@@ -693,7 +763,7 @@ export default async function CampaignDetailPage({
                         >
                           {video.video_plays.toLocaleString('fr-FR')} vues
                         </span>
-                        {isBestCostPerLead ? (
+                        {isAdmin && isBestCostPerLead ? (
                           <span
                             style={{
                               position: 'absolute',
@@ -766,7 +836,7 @@ export default async function CampaignDetailPage({
                   <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gridTemplateColumns: `repeat(${isAdmin ? 3 : 1}, 1fr)`,
                     gap: 8,
                     marginTop: 14,
                     paddingBottom: 13,
@@ -777,14 +847,18 @@ export default async function CampaignDetailPage({
                     <div style={{ fontWeight: 600, fontSize: 16 }}>{formatEur(audience.meta_spend)} €</div>
                     <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Dépensé</div>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{audience.meta_pixel_leads}</div>
-                    <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Leads Meta</div>
-                  </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{formatCost(audienceCostPerLead)}</div>
-                    <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Coût/lead</div>
-                  </div>
+                  {isAdmin ? (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: 16 }}>{audience.meta_pixel_leads}</div>
+                      <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Leads Meta</div>
+                    </div>
+                  ) : null}
+                  {isAdmin ? (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: 16 }}>{formatCost(audienceCostPerLead)}</div>
+                      <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Coût/lead</div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Répartition des leads par plateforme : donnée de l'import
@@ -797,12 +871,50 @@ export default async function CampaignDetailPage({
                   </p>
                 ) : null}
 
+                {/* Répartition des leads par genre x tranche d'âge — import
+                    historique Excel uniquement (voir AUDIENCE_AGE_GENDER_BUCKETS
+                    ci-dessus) ; jamais affiché pour une audience réellement
+                    synchronisée via Meta (toutes les valeurs restent null). */}
+                {AUDIENCE_AGE_GENDER_BUCKETS.some(({ key }) => audience[key] !== null) ? (
+                  <div style={{ marginTop: 8 }}>
+                    <p
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: '.04em',
+                        textTransform: 'uppercase',
+                        color: muted,
+                        textAlign: 'center',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Leads par âge et genre
+                    </p>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        gap: 4,
+                        fontSize: 11,
+                        color: muted,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {AUDIENCE_AGE_GENDER_BUCKETS.map(({ key, label }) => (
+                        <span key={key}>
+                          {label} : {audience[key] ?? '—'}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {video ? (
                   <>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 12 }}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: 16 }}>{formatCount(video.impressions)}</div>
-                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Impressions</div>
+                        <div style={{ fontWeight: 600, fontSize: 16 }}>{video.video_plays.toLocaleString('fr-FR')}</div>
+                        <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Nombre de vues</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontWeight: 600, fontSize: 16 }}>
