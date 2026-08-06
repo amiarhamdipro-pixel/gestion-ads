@@ -13,8 +13,8 @@
 // qui n'ont plus aucun rendez-vous actif rattaché aujourd'hui — sinon un
 // rendez-vous annulé ou détaché laisserait un compteur obsolète. D'où
 // l'union de deux sources : les jours réellement comptés (source de vérité)
-// et les jours déjà présents en base pour ce client (remis à 0 s'ils n'ont
-// plus de rendez-vous).
+// et les jours déjà présents en base pour la campagne ciblée (remis à 0
+// s'ils n'ont plus de rendez-vous).
 //
 // stat_date = date de CRÉATION de la réservation (booking_created_at), pas
 // la date prévue du rendez-vous (start_time) — même règle que le
@@ -27,6 +27,14 @@
 // Aucune donnée personnelle lue : seuls campaign_id et booking_created_at
 // (voir lib/calendly/appointments.ts — jamais nom/email/téléphone/réponses
 // libres).
+//
+// Sélection séquentielle (règle métier officielle, voir BRIEF-CLAUDE-CODE.md
+// et lib/sync/syncAllCampaigns.ts, selectSequentialTarget) : cette fonction
+// ne recalcule/n'écrit JAMAIS que pour la campagne ciblée ce passage —
+// jamais pour une campagne verrouillée (historique figée ou publiée), ni
+// pour une campagne dynamique "en attente" (pas son tour). Portée appliquée
+// directement au niveau des requêtes (.eq('campaign_id', ...)), pas par un
+// filtrage a posteriori : aucune ligne d'une autre campagne n'est même lue.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parisDateFromInstant } from '@/lib/calculations'
@@ -39,17 +47,56 @@ export type SyncCalendlyDailyStatsResult = {
   daysZeroed: number
 }
 
-export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCalendlyDailyStatsResult> {
+const EMPTY_RESULT = (clientId: string): SyncCalendlyDailyStatsResult => ({
+  clientId,
+  campaignsProcessed: 0,
+  daysWritten: 0,
+  daysWithAppointments: 0,
+  daysZeroed: 0,
+})
+
+// targetCampaignNumber : campagne dynamique ciblée ce passage (voir
+// lib/sync/syncAllCampaigns.ts, selectSequentialTarget). null si aucune
+// campagne dynamique candidate (toutes verrouillées) — succès propre, rien
+// à recalculer.
+export async function syncCalendlyDailyStats(
+  clientId: string,
+  targetCampaignNumber: number | null
+): Promise<SyncCalendlyDailyStatsResult> {
+  if (targetCampaignNumber === null) {
+    return EMPTY_RESULT(clientId)
+  }
+
   const supabase = createAdminClient()
 
-  // Rendez-vous actifs rattachés à une campagne — jamais de donnée
-  // personnelle (voir en-tête).
+  const { data: targetCampaign, error: targetError } = await supabase
+    .from('campaigns')
+    .select('id, sync_locked')
+    .eq('client_id', clientId)
+    .eq('campaign_number', targetCampaignNumber)
+    .maybeSingle()
+
+  if (targetError) {
+    throw new Error(`Échec lecture campagne ciblée : ${targetError.message}`)
+  }
+
+  // Défense en profondeur (voir en-tête et lib/sync/syncAppointments.ts,
+  // même principe) : jamais recalculer/écrire pour une campagne verrouillée,
+  // même si l'appelant désignait par erreur une campagne sync_locked=true.
+  if (!targetCampaign || targetCampaign.sync_locked) {
+    return EMPTY_RESULT(clientId)
+  }
+
+  const targetCampaignId = targetCampaign.id
+
+  // Rendez-vous actifs rattachés À LA CAMPAGNE CIBLÉE uniquement — jamais de
+  // donnée personnelle (voir en-tête).
   const { data: appointmentRows, error: appointmentsError } = await supabase
     .from('appointments')
-    .select('campaign_id, booking_created_at')
+    .select('booking_created_at')
     .eq('client_id', clientId)
+    .eq('campaign_id', targetCampaignId)
     .eq('status', 'active')
-    .not('campaign_id', 'is', null)
 
   if (appointmentsError) {
     throw new Error(`Échec lecture rendez-vous rattachés : ${appointmentsError.message}`)
@@ -60,43 +107,40 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
     // booking_created_at manquant : défensif uniquement (voir en-tête), on
     // n'invente pas de date de repli — ce rendez-vous est simplement exclu
     // des statistiques journalières tant qu'il n'est pas correctement enrichi.
-    if (!row.campaign_id || !row.booking_created_at) continue
+    if (!row.booking_created_at) continue
     const statDate = parisDateFromInstant(row.booking_created_at)
-    const key = `${row.campaign_id}|${statDate}`
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+    counts.set(statDate, (counts.get(statDate) ?? 0) + 1)
   }
 
-  // Jours déjà en base pour ce client : à remettre à 0 s'ils n'ont plus de
-  // rendez-vous (voir en-tête).
+  // Jours déjà en base pour CETTE campagne : à remettre à 0 s'ils n'ont plus
+  // de rendez-vous (voir en-tête).
   const { data: existingRows, error: existingError } = await supabase
     .from('campaign_daily_stats')
-    .select('campaign_id, stat_date')
+    .select('stat_date')
     .eq('client_id', clientId)
+    .eq('campaign_id', targetCampaignId)
 
   if (existingError) {
     throw new Error(`Échec lecture campaign_daily_stats existants : ${existingError.message}`)
   }
 
-  const allKeys = new Set<string>(counts.keys())
+  const allDates = new Set<string>(counts.keys())
   for (const row of existingRows ?? []) {
-    allKeys.add(`${row.campaign_id}|${row.stat_date}`)
+    allDates.add(row.stat_date)
   }
 
-  if (allKeys.size === 0) {
-    return { clientId, campaignsProcessed: 0, daysWritten: 0, daysWithAppointments: 0, daysZeroed: 0 }
+  if (allDates.size === 0) {
+    return EMPTY_RESULT(clientId)
   }
 
-  const rows = Array.from(allKeys).map((key) => {
-    const [campaignId, statDate] = key.split('|')
-    return {
-      client_id: clientId,
-      campaign_id: campaignId,
-      stat_date: statDate,
-      calendly_appointments: counts.get(key) ?? 0,
-      // meta_spend / meta_pixel_leads volontairement absents du payload :
-      // jamais écrasés par cette synchro Calendly-only.
-    }
-  })
+  const rows = Array.from(allDates).map((statDate) => ({
+    client_id: clientId,
+    campaign_id: targetCampaignId,
+    stat_date: statDate,
+    calendly_appointments: counts.get(statDate) ?? 0,
+    // meta_spend / meta_pixel_leads volontairement absents du payload :
+    // jamais écrasés par cette synchro Calendly-only.
+  }))
 
   const { error: upsertError } = await supabase
     .from('campaign_daily_stats')
@@ -108,7 +152,7 @@ export async function syncCalendlyDailyStats(clientId: string): Promise<SyncCale
 
   return {
     clientId,
-    campaignsProcessed: new Set(rows.map((row) => row.campaign_id)).size,
+    campaignsProcessed: 1,
     daysWritten: rows.length,
     daysWithAppointments: counts.size,
     daysZeroed: rows.length - counts.size,

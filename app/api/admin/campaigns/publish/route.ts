@@ -59,12 +59,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Campagne introuvable.' }, { status: 404 })
   }
 
+  // Règle métier officielle (voir BRIEF-CLAUDE-CODE.md) : une campagne
+  // publiée est verrouillée DÉFINITIVEMENT — il ne doit jamais exister l'état
+  // published=true / sync_locked=false. Publier écrit donc les deux colonnes
+  // en une seule instruction UPDATE : un update mono-ligne est atomique par
+  // nature côté Postgres (soit les deux valeurs sont écrites ensemble, soit
+  // aucune ne l'est si la requête échoue — updateError ci-dessous couvre ce
+  // cas, aucune écriture partielle possible). Dépublier n'écrit QUE
+  // published=false : sync_locked n'apparaît jamais dans ce payload, donc ne
+  // peut jamais être remis à false par cette route (le corps de la requête
+  // ne l'accepte d'ailleurs pas en entrée, voir plus haut — aucun vecteur
+  // client pour le déverrouiller).
+  const updatePayload = published ? { published: true, sync_locked: true } : { published: false }
+
   const { data: updated, error: updateError } = await supabase
     .from('campaigns')
-    .update({ published })
+    .update(updatePayload)
     .eq('id', campaignId)
     .eq('client_id', profile.client_id)
-    .select('id, campaign_number, published')
+    .select('id, campaign_number, published, sync_locked')
     .single()
 
   if (updateError || !updated) {

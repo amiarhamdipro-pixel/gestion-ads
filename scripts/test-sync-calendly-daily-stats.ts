@@ -10,6 +10,16 @@
 // par la synchro elle-même — pas de DELETE/UPDATE manuel). Écrit réellement
 // dans Supabase (service role) — Calendly reste en lecture seule. Lance avec
 // `npx tsx scripts/test-sync-calendly-daily-stats.ts`.
+//
+// OBSOLÈTE (règle métier "une seule campagne dynamique par appel", voir
+// BRIEF-CLAUDE-CODE.md) : syncAppointments()/syncCalendlyDailyStats()
+// prennent désormais un targetCampaignNumber explicite (CAMPAIGN_NUMBER
+// ci-dessous, passé à tous les appels pour compiler) et gèlent toute
+// campagne verrouillée. CAMPAIGN_NUMBER=19 est désormais sync_locked=true
+// (verrouillage définitif) : ce script prédate cette règle et n'a plus de
+// résultat significatif tel quel sans reprise plus large, hors périmètre
+// ici (le seul objectif de cette modification est de garder
+// `npx tsc --noEmit` propre sur l'ensemble du projet).
 
 import { readFileSync } from 'node:fs'
 import { createAdminClient } from '../lib/supabase/admin'
@@ -124,7 +134,7 @@ async function main(): Promise<void> {
     await setCampaignEndDate(supabase, campaign.id, TEMP_END_DATE)
 
     console.log('\n=== syncAppointments() — rattache les rendez-vous réels à la fenêtre ===')
-    const appointmentsSync = await syncAppointments(client.id)
+    const appointmentsSync = await syncAppointments(client.id, CAMPAIGN_NUMBER)
     console.log(
       `lus=${appointmentsSync.read} créés=${appointmentsSync.created} mis à jour=${appointmentsSync.updated} ` +
         `attribués=${appointmentsSync.campaignsAssigned}`
@@ -137,7 +147,7 @@ async function main(): Promise<void> {
     }
 
     console.log('\n=== Run 1 : syncCalendlyDailyStats() ===')
-    const run1 = await syncCalendlyDailyStats(client.id)
+    const run1 = await syncCalendlyDailyStats(client.id, CAMPAIGN_NUMBER)
     console.log(
       `daysWritten=${run1.daysWritten} daysWithAppointments=${run1.daysWithAppointments} daysZeroed=${run1.daysZeroed}`
     )
@@ -177,7 +187,7 @@ async function main(): Promise<void> {
     console.log(`✅ Colonnes Meta inchangées sur les ${baselineDailyRows.length} jour(s) déjà existants avant le test.`)
 
     console.log('\n=== Run 2 : syncCalendlyDailyStats() — doit être idempotent ===')
-    const run2 = await syncCalendlyDailyStats(client.id)
+    const run2 = await syncCalendlyDailyStats(client.id, CAMPAIGN_NUMBER)
     console.log(
       `daysWritten=${run2.daysWritten} daysWithAppointments=${run2.daysWithAppointments} daysZeroed=${run2.daysZeroed}`
     )
@@ -210,7 +220,7 @@ async function main(): Promise<void> {
     console.log(`\n════════ Restauration : campagne n°${CAMPAIGN_NUMBER} end_date -> ${originalEndDate ?? 'null'} ════════`)
     await setCampaignEndDate(supabase, campaign.id, originalEndDate)
 
-    const restoreAppointments = await syncAppointments(client.id)
+    const restoreAppointments = await syncAppointments(client.id, CAMPAIGN_NUMBER)
     console.log(
       `syncAppointments (restauration) : mis à jour=${restoreAppointments.updated} ` +
         `désattribués=${restoreAppointments.campaignsUnassigned}`
@@ -222,7 +232,7 @@ async function main(): Promise<void> {
       console.error(`Échec restauration : ${remainingAttached} rendez-vous restent rattachés.`)
     }
 
-    const restoreDailyStats = await syncCalendlyDailyStats(client.id)
+    const restoreDailyStats = await syncCalendlyDailyStats(client.id, CAMPAIGN_NUMBER)
     console.log(
       `syncCalendlyDailyStats (restauration) : daysWritten=${restoreDailyStats.daysWritten} ` +
         `daysWithAppointments=${restoreDailyStats.daysWithAppointments} daysZeroed=${restoreDailyStats.daysZeroed}`

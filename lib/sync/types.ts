@@ -131,11 +131,22 @@ export type CampaignSyncOutcome =
 
 export type SyncAllCampaignsReport = {
   totalDetected: number
+  // Sélection séquentielle (règle métier officielle, voir
+  // BRIEF-CLAUDE-CODE.md et lib/sync/syncAllCampaigns.ts,
+  // selectSequentialTarget) : au plus UNE campagne synchronisée par appel —
+  // celle au campaign_number le plus petit parmi les candidates non
+  // verrouillées. null si aucune candidate (toutes verrouillées ou aucune
+  // campagne valide détectée).
+  targetCampaignNumber: number | null
   succeeded: number
   failed: number
   // Campagnes sync_locked=true détectées côté Meta mais jamais tentées
-  // (référence historique figée) — voir campaigns.sync_locked.
+  // (référence historique figée OU publiée) — voir campaigns.sync_locked.
   skippedLocked: number[]
+  // Campagnes valides, non verrouillées, mais PAS la cible ce passage —
+  // strictement inchangées (voir lib/sync/syncAppointments.ts,
+  // syncCalendlyDailyStats.ts : gelées comme les campagnes verrouillées).
+  waiting: number[]
   invalid: InvalidCampaignGroup[]
   details: CampaignSyncOutcome[]
 }
@@ -157,14 +168,21 @@ export type CampaignDailyStatsSyncOutcome =
 
 export type SyncAllCampaignsDailyStatsReport = {
   totalDetected: number
+  // Même sélection séquentielle que SyncAllCampaignsReport ci-dessus,
+  // recalculée indépendamment (même règle, mêmes entrées — les deux
+  // convergent forcément vers la même campagne au sein d'un même appel).
+  targetCampaignNumber: number | null
   succeeded: number
   failed: number
   // true si l'arrêt anticipé a été déclenché par un code d'erreur Meta 17
   // (limite de débit) : les campagnes non tentées ne sont pas des échecs.
   stoppedOnRateLimit: boolean
   // Campagnes sync_locked=true détectées côté Meta mais jamais tentées
-  // (référence historique figée) — voir campaigns.sync_locked.
+  // (référence historique figée OU publiée) — voir campaigns.sync_locked.
   skippedLocked: number[]
+  // Campagnes valides, non verrouillées, mais PAS la cible ce passage —
+  // strictement inchangées.
+  waiting: number[]
   invalid: InvalidCampaignGroup[]
   details: CampaignDailyStatsSyncOutcome[]
 }

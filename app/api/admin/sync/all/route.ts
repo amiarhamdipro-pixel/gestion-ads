@@ -23,10 +23,39 @@ import { logError } from '@/lib/logger'
 // de Next.js. Un seul évènement final `result` porte le rapport complet ;
 // les champs des étapes non atteintes restent `null` (jamais une valeur
 // inventée) si un échec dur interrompt la chaîne avant leur tour.
+//
+// Règle métier officielle (voir BRIEF-CLAUDE-CODE.md) : une seule campagne
+// dynamique traitée par appel, celle au campaign_number le plus petit parmi
+// les candidates non verrouillées (lib/sync/syncAllCampaigns.ts,
+// selectSequentialTarget) — jamais un seuil numérique codé en dur. Meta
+// quotidien et Calendly (rattachement + quotidien) ciblent tous la MÊME
+// campagne que Meta totaux (metaTotals.targetCampaignNumber, jamais
+// re-choisie indépendamment plus loin dans la chaîne). Si aucune campagne
+// dynamique candidate n'existe, la chaîne s'arrête net après Meta totaux
+// (`noCampaignToSync: true`, succès propre) : Meta quotidien et Calendly ne
+// sont même pas lancés.
 
-type MetaTotalsSummary = { totalDetected: number; succeeded: number; failed: number; skippedLocked: number[] }
+// targetCampaignNumber/waiting : sélection séquentielle (règle métier
+// officielle, voir BRIEF-CLAUDE-CODE.md et lib/sync/syncAllCampaigns.ts,
+// selectSequentialTarget) — au plus une campagne synchronisée par appel.
+type MetaTotalsSummary = {
+  totalDetected: number
+  targetCampaignNumber: number | null
+  succeeded: number
+  failed: number
+  skippedLocked: number[]
+  waiting: number[]
+}
 type MetaDailySummary =
-  | { totalDetected: number; succeeded: number; failed: number; daysUpserted: number; skippedLocked: number[] }
+  | {
+      totalDetected: number
+      targetCampaignNumber: number | null
+      succeeded: number
+      failed: number
+      daysUpserted: number
+      skippedLocked: number[]
+      waiting: number[]
+    }
   | { error: string }
 type CalendlyAppointmentsSummary = {
   read: number
@@ -41,6 +70,11 @@ export type SyncAllReport = {
   ok: boolean
   abortedAtStep: 'meta_totals' | 'calendly_appointments' | null
   abortMessage: string | null
+  // true si aucune campagne dynamique candidate n'a été trouvée (toutes
+  // verrouillées, ou aucune campagne valide détectée côté Meta) : succès
+  // propre, Meta quotidien/Calendly jamais lancés (rien à traiter) — voir
+  // SyncButton.tsx, message "Aucune campagne à synchroniser".
+  noCampaignToSync: boolean
   metaTotals: MetaTotalsSummary | null
   metaDaily: MetaDailySummary | null
   calendlyAppointments: CalendlyAppointmentsSummary | null
@@ -97,9 +131,11 @@ export async function POST() {
         const totalsReport = await syncAllCampaigns(syncParams)
         metaTotals = {
           totalDetected: totalsReport.totalDetected,
+          targetCampaignNumber: totalsReport.targetCampaignNumber,
           succeeded: totalsReport.succeeded,
           failed: totalsReport.failed,
           skippedLocked: totalsReport.skippedLocked,
+          waiting: totalsReport.waiting,
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'erreur inconnue'
@@ -110,11 +146,36 @@ export async function POST() {
             ok: false,
             abortedAtStep: 'meta_totals',
             abortMessage: 'Échec de la synchronisation Meta (totaux) — synchronisation interrompue, Calendly non lancé.',
+            noCampaignToSync: false,
             metaTotals: null,
             metaDaily: null,
             calendlyAppointments: null,
             calendlyDaily: null,
             totalErrors: 1,
+          },
+        })
+        controller.close()
+        return
+      }
+
+      // Aucune campagne dynamique candidate (toutes verrouillées, ou aucune
+      // campagne valide détectée) : succès propre, rien à traiter — Meta
+      // quotidien et Calendly ne sont même pas lancés (voir
+      // BRIEF-CLAUDE-CODE.md, critère d'acceptation "Aucune campagne à
+      // synchroniser").
+      if (metaTotals.targetCampaignNumber === null) {
+        emit({
+          type: 'result',
+          report: {
+            ok: true,
+            abortedAtStep: null,
+            abortMessage: null,
+            noCampaignToSync: true,
+            metaTotals,
+            metaDaily: null,
+            calendlyAppointments: null,
+            calendlyDaily: null,
+            totalErrors: 0,
           },
         })
         controller.close()
@@ -130,6 +191,7 @@ export async function POST() {
         const dailyReport = await syncAllCampaignsDailyStats(syncParams)
         metaDaily = {
           totalDetected: dailyReport.totalDetected,
+          targetCampaignNumber: dailyReport.targetCampaignNumber,
           succeeded: dailyReport.succeeded,
           failed: dailyReport.failed,
           daysUpserted: dailyReport.details.reduce(
@@ -137,6 +199,7 @@ export async function POST() {
             0
           ),
           skippedLocked: dailyReport.skippedLocked,
+          waiting: dailyReport.waiting,
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'erreur inconnue'
@@ -149,10 +212,18 @@ export async function POST() {
       // échec) a fini juste au-dessus.
       emit({ type: 'stage', stage: 'calendly' })
 
+      // Cible exactement la même campagne que Meta totaux (metaTotals.
+      // targetCampaignNumber, non nul à ce point — voir le court-circuit
+      // ci-dessus) : rattache/recalcule uniquement ce qui est nécessaire
+      // pour cette campagne, jamais une campagne verrouillée ni une
+      // campagne dynamique "en attente" (voir lib/sync/syncAppointments.ts,
+      // syncCalendlyDailyStats.ts).
+      const targetCampaignNumber = metaTotals.targetCampaignNumber
+
       let calendlyAppointments: CalendlyAppointmentsSummary
       let appointmentRealErrors: number
       try {
-        const appointmentsResult = await syncAppointments(clientId)
+        const appointmentsResult = await syncAppointments(clientId, targetCampaignNumber)
         const ambiguous = appointmentsResult.errorDetails.filter((m) => m.includes('chevauchent')).length
         appointmentRealErrors = appointmentsResult.errors - ambiguous
         calendlyAppointments = {
@@ -171,6 +242,7 @@ export async function POST() {
             ok: false,
             abortedAtStep: 'calendly_appointments',
             abortMessage: 'Échec de la synchronisation Calendly (rendez-vous) — synchronisation interrompue.',
+            noCampaignToSync: false,
             metaTotals,
             metaDaily,
             calendlyAppointments: null,
@@ -185,7 +257,7 @@ export async function POST() {
       // ── 4/4 : quotidien Calendly ──────────────────────────────────────
       let calendlyDaily: CalendlyDailySummary
       try {
-        const dailyResult = await syncCalendlyDailyStats(clientId)
+        const dailyResult = await syncCalendlyDailyStats(clientId, targetCampaignNumber)
         calendlyDaily = { daysWritten: dailyResult.daysWritten, campaignsProcessed: dailyResult.campaignsProcessed }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'erreur inconnue'
@@ -214,6 +286,7 @@ export async function POST() {
           ok,
           abortedAtStep: null,
           abortMessage: null,
+          noCampaignToSync: false,
           metaTotals,
           metaDaily,
           calendlyAppointments,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { accent, green, muted, red } from './format'
 
 type Props = {
@@ -10,7 +11,20 @@ type Props = {
 
 type SaveState = { status: 'idle' | 'saving' } | { status: 'error'; message: string }
 
+// Texte exact confirmé (voir BRIEF-CLAUDE-CODE.md, règle métier officielle) :
+// affiché avant toute publication, jamais avant une dépublication (qui ne
+// verrouille ni ne déverrouille rien). window.confirm() plutôt qu'une
+// modale dédiée : bloquant, natif, aucune dépendance ajoutée — la
+// confirmation reste obligatoire (un Annuler interrompt intégralement
+// l'action, aucun appel réseau n'est déclenché).
+const PUBLISH_CONFIRM_MESSAGE =
+  'Cette action rendra immédiatement cette campagne visible au client.\n\n' +
+  'Elle verrouillera définitivement les données de cette campagne.\n\n' +
+  'Elle ne pourra plus jamais être synchronisée automatiquement.\n\n' +
+  'Confirmer ?'
+
 export default function PublishToggle({ campaignId, initialPublished }: Props) {
+  const router = useRouter()
   const [published, setPublished] = useState(initialPublished)
   const [state, setState] = useState<SaveState>({ status: 'idle' })
 
@@ -19,6 +33,9 @@ export default function PublishToggle({ campaignId, initialPublished }: Props) {
   async function handleToggle() {
     if (isSaving) return
     const next = !published
+
+    if (next && !window.confirm(PUBLISH_CONFIRM_MESSAGE)) return
+
     setState({ status: 'saving' })
 
     try {
@@ -36,6 +53,12 @@ export default function PublishToggle({ campaignId, initialPublished }: Props) {
 
       setPublished(body.campaign.published)
       setState({ status: 'idle' })
+      // sync_locked (badge "En préparation"/"Validée", rendu côté serveur)
+      // peut avoir changé sans que ce composant le suive lui-même en état
+      // local — rafraîchit les Server Components de la page pour qu'il
+      // reflète immédiatement le nouveau verrouillage, sans rechargement
+      // manuel.
+      router.refresh()
     } catch {
       setState({ status: 'error', message: "Échec de l'enregistrement." })
     }

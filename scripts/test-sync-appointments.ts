@@ -16,6 +16,19 @@
 //    appointments) — Calendly reste en lecture seule (voir
 //    lib/calendly/appointments.ts). Lance avec
 // `npx tsx scripts/test-sync-appointments.ts`.
+//
+// OBSOLÈTE (règle métier "une seule campagne dynamique par appel", voir
+// BRIEF-CLAUDE-CODE.md et lib/sync/syncAppointments.ts) : syncAppointments()
+// prend désormais un targetCampaignNumber explicite et ne rattache/réévalue
+// plus qu'une seule campagne à la fois. Le Test 4 ci-dessous (chevauchement
+// entre deux campagnes simultanément actives) ne peut plus se produire par
+// construction — les appels sont adaptés pour compiler (CAMPAIGN_NUMBER_A
+// comme cible), mais ce script n'a plus vocation à démontrer un vrai
+// chevauchement. Par ailleurs CAMPAIGN_NUMBER_A=19 est désormais
+// sync_locked=true (verrouillage définitif) : ce script prédate cette
+// règle et n'a plus de résultat significatif tel quel sans reprise plus
+// large, hors périmètre ici (le seul objectif de cette modification est de
+// garder `npx tsc --noEmit` propre sur l'ensemble du projet).
 
 import { readFileSync } from 'node:fs'
 import { createAdminClient } from '../lib/supabase/admin'
@@ -287,7 +300,7 @@ async function main(): Promise<void> {
         '(2026-06-30 → 2026-07-17, Europe/Paris) ==='
     )
     await setCampaignEndDate(supabase, campaignA.id, '2026-07-17')
-    const run3 = await syncAppointments(client.id)
+    const run3 = await syncAppointments(client.id, CAMPAIGN_NUMBER_A)
     printResult('Run 3 (fenêtre temporaire)', run3)
 
     const attachedToA = await countByCampaign(supabase, campaignA.id)
@@ -303,7 +316,7 @@ async function main(): Promise<void> {
 
     console.log(`\n--- Restauration après test 3 (end_date campagne n°${CAMPAIGN_NUMBER_A} -> null) ---`)
     await setCampaignEndDate(supabase, campaignA.id, null)
-    const restore1 = await syncAppointments(client.id)
+    const restore1 = await syncAppointments(client.id, CAMPAIGN_NUMBER_A)
     printResult('Restauration après test 3', restore1)
 
     const withCampaignAfterRestore1 = await countWithCampaign(supabase, client.id)
@@ -319,7 +332,7 @@ async function main(): Promise<void> {
     )
     await setCampaignEndDate(supabase, campaignA.id, '2026-07-20')
     await setCampaignEndDate(supabase, campaignB.id, '2026-08-15')
-    const run4 = await syncAppointments(client.id)
+    const run4 = await syncAppointments(client.id, CAMPAIGN_NUMBER_A)
     printResult('Run 4 (chevauchement temporaire)', run4)
 
     const overlapErrors = run4.errorDetails.filter((message) => message.includes('chevauchent'))
@@ -358,7 +371,7 @@ async function main(): Promise<void> {
     )
     await setCampaignEndDate(supabase, campaignA.id, null)
     await setCampaignEndDate(supabase, campaignB.id, null)
-    const restore2 = await syncAppointments(client.id)
+    const restore2 = await syncAppointments(client.id, CAMPAIGN_NUMBER_A)
     printResult('Restauration après test 4', restore2)
   } finally {
     // Filet de sécurité : si une étape a levé une exception, on restaure quand
@@ -382,7 +395,7 @@ async function main(): Promise<void> {
 
   // --- Étape 5 : rejouer sans changement -> 0 update ----------------------
   console.log('\n=== Run final : sans changement, doit être un no-op ===')
-  const runFinal = await syncAppointments(client.id)
+  const runFinal = await syncAppointments(client.id, CAMPAIGN_NUMBER_A)
   printResult('Run final', runFinal)
 
   if (runFinal.created !== 0 || runFinal.updated !== 0) {

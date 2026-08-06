@@ -423,6 +423,7 @@ export default async function DashboardPage({
     calendlyAppointments: number
     facebook: number
     instagram: number
+    sync_locked: boolean
   }[] = []
   let campaignsError: string | null = null
 

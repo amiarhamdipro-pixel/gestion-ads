@@ -43,6 +43,7 @@ type Campaign = {
   calendlyAppointments: number
   facebook: number
   instagram: number
+  sync_locked: boolean
 }
 
 // Seuils de couleur du badge "Tracking" (part des RDV réels suivis par le
@@ -58,6 +59,30 @@ function trackingTone(rate: number | null): { color: string; bg: string } | null
   if (rate >= 0.95) return { color: ink, bg: softBg(green, 0.14) }
   if (rate >= 0.8) return { color: ink, bg: softBg(amber, 0.16) }
   return { color: ink, bg: softBg(red, 0.14) }
+}
+
+// État sync_locked (règle métier officielle, voir BRIEF-CLAUDE-CODE.md) :
+// "Validée" = verrouillée définitivement, plus jamais synchronisée — jamais
+// "Synchronisable", qui suggérerait à tort qu'une action de synchro reste
+// possible. Indépendant de published (visibilité client) et visible aux
+// deux rôles (même campagne/mêmes libellés pour l'admin et le client).
+function LockBadge({ syncLocked }: { syncLocked: boolean }) {
+  return (
+    <span
+      style={{
+        marginLeft: 8,
+        fontSize: 11,
+        fontWeight: 700,
+        padding: '2px 8px',
+        borderRadius: 999,
+        background: syncLocked ? softBg(accent, 0.14) : softBg(green, 0.14),
+        color: ink,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {syncLocked ? '🔒 Validée' : '🟢 En préparation'}
+    </span>
+  )
 }
 
 export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Campaign[]; isAdmin: boolean }) {
@@ -154,6 +179,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                     >
                       Campagne {campaign.campaign_number}
                     </Link>
+                    <LockBadge syncLocked={campaign.sync_locked} />
                     {isAdmin ? (
                       <>
                         <EndDateEditor campaignId={campaign.id} startDate={campaign.start_date} initialEndDate={campaign.end_date} />
@@ -229,6 +255,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
               >
                 Campagne {campaign.campaign_number}
               </Link>
+              <LockBadge syncLocked={campaign.sync_locked} />
             </div>
             <div style={{ fontSize: 12.5, color: muted, marginTop: 3 }}>{formatPeriod(campaign.start_date, campaign.end_date)}</div>
             {isAdmin ? (

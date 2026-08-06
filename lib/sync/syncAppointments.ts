@@ -137,16 +137,20 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-export async function syncAppointments(clientId: string): Promise<SyncAppointmentsResult> {
+// targetCampaignNumber : campagne dynamique ciblée ce passage (voir
+// lib/sync/syncAllCampaigns.ts, selectSequentialTarget — même sélection que
+// les volets Meta). null si aucune campagne dynamique candidate (toutes
+// verrouillées) : aucun rattachement n'est alors tenté, tout est gelé.
+export async function syncAppointments(clientId: string, targetCampaignNumber: number | null): Promise<SyncAppointmentsResult> {
   const supabase = createAdminClient()
   const { events: rawEvents, errors: eventErrors } = await fetchScheduledEvents()
 
   // skipped compte trois cas : un doublon Calendly au sein du même lot
   // (défensif — ne devrait pas arriver, statuts actif/annulé disjoints), un
-  // rendez-vous déjà rattaché à une campagne verrouillée (gelé
-  // intégralement, voir plus bas) et un rendez-vous déjà en base et
-  // strictement identique (isUnchanged). Dans les trois cas, rien n'est
-  // envoyé à l'upsert.
+  // rendez-vous déjà rattaché à une campagne gelée (verrouillée ou "en
+  // attente", voir plus bas) et un rendez-vous déjà en base et strictement
+  // identique (isUnchanged). Dans les trois cas, rien n'est envoyé à
+  // l'upsert.
   const seen = new Set<string>()
   const dedupedEvents: CalendlyScheduledAppointment[] = []
   let skipped = 0
@@ -222,7 +226,7 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   // renseignées (les autres sont ignorées : fenêtre indéterminée).
   const { data: campaignRows, error: campaignsError } = await supabase
     .from('campaigns')
-    .select('id, start_date, end_date, sync_locked')
+    .select('id, campaign_number, start_date, end_date, sync_locked')
     .eq('client_id', clientId)
     .not('start_date', 'is', null)
     .not('end_date', 'is', null)
@@ -231,15 +235,25 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
     throw new Error(`Échec lecture des campagnes : ${campaignsError.message || JSON.stringify(campaignsError)}`)
   }
 
-  // Campagnes sync_locked=true (verrouillage définitif — publication admin
-  // OU référence historique figée, voir campaigns.sync_locked et
-  // BRIEF-CLAUDE-CODE.md, règle "plus jamais resynchronisée") : exclues de la
-  // fenêtre de rattachement pour les NOUVEAUX rendez-vous ci-dessous.
-  const lockedCampaignIds = new Set((campaignRows ?? []).filter((c) => c.sync_locked).map((c) => c.id))
+  // Résout la campagne ciblée (voir targetCampaignNumber ci-dessus) en id.
+  // Défense en profondeur : jamais de fenêtre de rattachement pour une
+  // campagne verrouillée, même si l'appelant désignait par erreur une
+  // campagne sync_locked=true (voir aussi syncCalendlyDailyStats.ts, même
+  // principe).
+  const targetRow = (campaignRows ?? []).find((c) => c.campaign_number === targetCampaignNumber)
+  const targetCampaignId = targetRow && !targetRow.sync_locked ? targetRow.id : null
+
+  // Sélection séquentielle (règle métier officielle, voir
+  // BRIEF-CLAUDE-CODE.md) : toute campagne AUTRE que celle ciblée ce passage
+  // — verrouillée OU simplement "en attente" (pas son tour selon
+  // selectSequentialTarget) — est gelée. Seule la campagne ciblée peut
+  // recevoir un nouveau rattachement ou voir un rattachement existant
+  // réévalué ci-dessous.
+  const frozenCampaignIds = new Set((campaignRows ?? []).map((c) => c.id).filter((id) => id !== targetCampaignId))
 
   const campaignWindows: CampaignWindow[] = (campaignRows ?? [])
-    .filter((c): c is { id: string; start_date: string; end_date: string; sync_locked: boolean } => c.start_date !== null && c.end_date !== null)
-    .filter((c) => !c.sync_locked)
+    .filter((c): c is { id: string; campaign_number: number; start_date: string; end_date: string; sync_locked: boolean } => c.start_date !== null && c.end_date !== null)
+    .filter((c) => c.id === targetCampaignId)
     .map((c) => ({ id: c.id, startDate: c.start_date, endDate: c.end_date }))
 
   let created = 0
@@ -251,17 +265,20 @@ export async function syncAppointments(clientId: string): Promise<SyncAppointmen
   for (const appointment of deduped) {
     const existing = existingByUri.get(appointment.calendly_event_uri)
 
-    // Déjà rattaché à une campagne verrouillée (published=true,
-    // sync_locked=true) : gelé INTÉGRALEMENT, ligne entière jamais réécrite
-    // par une synchro future — même si son statut Calendly a changé depuis
-    // (ex. annulation). "Plus jamais resynchronisée" s'applique à la ligne
-    // entière, pas seulement à campaign_id (voir BRIEF-CLAUDE-CODE.md,
-    // nouvelle règle métier) : sans ce garde, un rendez-vous annulé après
-    // verrouillage ferait quand même passer status='canceled' à l'upsert,
-    // et campaign_daily_stats.calendly_appointments (via
+    // Déjà rattaché à une campagne gelée (verrouillée OU simplement "en
+    // attente" ce passage, voir frozenCampaignIds ci-dessus) : gelé
+    // INTÉGRALEMENT, ligne entière jamais réécrite — même si son statut
+    // Calendly a changé depuis (ex. annulation). Pour une campagne
+    // verrouillée, "plus jamais resynchronisée" s'applique à la ligne
+    // entière, pas seulement à campaign_id (voir BRIEF-CLAUDE-CODE.md) :
+    // sans ce garde, un rendez-vous annulé après verrouillage ferait quand
+    // même passer status='canceled' à l'upsert, et
+    // campaign_daily_stats.calendly_appointments (via
     // syncCalendlyDailyStats, qui ne compte que status='active') changerait
-    // silencieusement pour une campagne pourtant "figée".
-    if (existing?.campaign_id && lockedCampaignIds.has(existing.campaign_id)) {
+    // silencieusement pour une campagne pourtant "figée". Pour une campagne
+    // "en attente", ce même gel garantit qu'elle reste strictement
+    // inchangée tant que ce n'est pas son tour (sélection séquentielle).
+    if (existing?.campaign_id && frozenCampaignIds.has(existing.campaign_id)) {
       skipped += 1
       continue
     }

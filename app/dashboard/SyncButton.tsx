@@ -23,10 +23,20 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n > 1 ? 's' : ''}`
 }
 
-// Rapport final court (tâche 5) : une ligne par volet, jamais un succès
-// global si un volet a échoué (report.ok reflète ça, calculé côté serveur —
-// voir route.ts). Les champs à null (étape jamais atteinte, échec dur en
-// amont) sont explicitement signalés, jamais silencieusement omis.
+function listNumbers(numbers: number[]): string {
+  return numbers.map((n) => `n°${n}`).join(', ')
+}
+
+// Rapport final court : une ligne par volet, jamais un succès global si un
+// volet a échoué (report.ok reflète ça, calculé côté serveur — voir
+// route.ts). Les champs à null (étape jamais atteinte, échec dur en amont
+// OU aucune campagne à traiter) sont explicitement signalés, jamais
+// silencieusement omis.
+//
+// Règle métier officielle (voir BRIEF-CLAUDE-CODE.md) : une seule campagne
+// dynamique traitée par appel — le rapport nomme toujours explicitement
+// laquelle ("Campagne 20 synchronisée"), jamais un simple compte pluralisé
+// comme avant (qui n'aurait plus de sens à 0 ou 1 campagne).
 function summarizeReport(report: SyncAllReport): string[] {
   const lines: string[] = []
 
@@ -34,19 +44,33 @@ function summarizeReport(report: SyncAllReport): string[] {
     lines.push(`❌ ${report.abortMessage}`)
   }
 
+  if (report.noCampaignToSync) {
+    lines.push('Aucune campagne à synchroniser.')
+    if (report.metaTotals && report.metaTotals.skippedLocked.length > 0) {
+      lines.push(
+        `${plural(report.metaTotals.skippedLocked.length, 'campagne')} déjà validée${report.metaTotals.skippedLocked.length > 1 ? 's' : ''} (${listNumbers(report.metaTotals.skippedLocked)})`
+      )
+    }
+    return lines
+  }
+
   if (report.metaTotals) {
     const t = report.metaTotals
-    lines.push(
-      `Meta : ${plural(t.succeeded, 'campagne')} synchronisée${t.succeeded > 1 ? 's' : ''}` +
-        (t.failed > 0 ? ` (${plural(t.failed, 'échec')})` : '') +
-        (report.metaDaily
-          ? 'error' in report.metaDaily
-            ? ' · quotidien : échec'
-            : ` · ${plural(report.metaDaily.daysUpserted, 'jour')} mis à jour`
-          : '')
-    )
+    if (t.targetCampaignNumber !== null) {
+      lines.push(
+        (t.succeeded > 0 ? `Campagne ${t.targetCampaignNumber} synchronisée` : `❌ Échec de la campagne ${t.targetCampaignNumber}`) +
+          (report.metaDaily
+            ? 'error' in report.metaDaily
+              ? ' · quotidien : échec'
+              : ` · ${plural(report.metaDaily.daysUpserted, 'jour')} mis à jour`
+            : '')
+      )
+    }
     if (t.skippedLocked.length > 0) {
-      lines.push(`${plural(t.skippedLocked.length, 'campagne verrouillée')} ignorée${t.skippedLocked.length > 1 ? 's' : ''} (référence historique figée)`)
+      lines.push(`${plural(t.skippedLocked.length, 'campagne verrouillée')} ignorée${t.skippedLocked.length > 1 ? 's' : ''} (${listNumbers(t.skippedLocked)})`)
+    }
+    if (t.waiting.length > 0) {
+      lines.push(`${plural(t.waiting.length, 'campagne')} en attente (${listNumbers(t.waiting)})`)
     }
   }
 

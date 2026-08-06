@@ -763,6 +763,148 @@ code a changé depuis) :
   stream/NDJSON testée séparément avec un découpage d'octets pathologique (au
   milieu d'une ligne JSON), parsing toujours correct.
 
+- **Règle métier officielle et définitive du workflow de publication**
+  (`app/api/admin/campaigns/publish/route.ts`, `PublishToggle.tsx`,
+  `campaigns/[id]/page.tsx`, `OverviewSection.tsx`, `lib/sync/*`) : Synchroniser
+  → Contrôler les données → **Publier** → campagne visible client →
+  **verrouillée définitivement** → plus jamais resynchronisée. Une campagne
+  publiée est **figée pour toujours** ; le bouton Publier est une **validation
+  métier**, pas un simple interrupteur de visibilité — les 19 campagnes
+  historiques (Excel) sont déjà dans cet état final ; toute campagne future
+  (dynamique, Meta) y arrive par ce même cycle, jamais autrement.
+  - **Transaction atomique à la publication** : `published=true` et
+    `sync_locked=true` sont écrits en une seule instruction `UPDATE`
+    (atomique par nature côté Postgres pour une ligne — soit les deux
+    valeurs sont posées ensemble, soit aucune ne l'est si la requête échoue,
+    aucune écriture partielle possible). L'état `published=true` /
+    `sync_locked=false` ne doit jamais exister. Dépublier n'écrit QUE
+    `published=false` : `sync_locked` n'entre jamais dans ce payload et ne
+    peut donc jamais être remis à `false` par cette route (le corps de la
+    requête n'accepte d'ailleurs pas `sync_locked` en entrée) — le
+    verrouillage, une fois posé, est permanent.
+  - **Confirmation obligatoire avant publication** (`window.confirm()`,
+    aucune dépendance ajoutée) : « Cette action rendra immédiatement cette
+    campagne visible au client. Elle verrouillera définitivement les données
+    de cette campagne. Elle ne pourra plus jamais être synchronisée
+    automatiquement. Confirmer ? ». Un Annuler interrompt intégralement
+    l'action (aucun appel réseau déclenché). Jamais affichée avant une
+    dépublication (qui ne verrouille ni ne déverrouille rien).
+  - **Bouton Publier ajouté sur la page Détail campagne**
+    (`campaigns/[id]/page.tsx`, admin uniquement) : le workflow complet
+    (Synchroniser — bouton global déjà existant en en-tête du dashboard,
+    inchangé — Contrôler — Publier) est désormais réalisable depuis cette
+    page, sans repasser par la liste des campagnes.
+  - **Badge d'état visuel** (`app/dashboard/campaigns/[id]/page.tsx`,
+    `OverviewSection.tsx`, visible admin et client, dans la liste des
+    campagnes ET dans le détail) : `sync_locked=false` → « 🟢 En
+    préparation », `sync_locked=true` → « 🔒 Validée ». Libellés métier
+    volontairement choisis (jamais « Synchronisable », qui suggérerait à
+    tort qu'une action de synchro reste possible sur une campagne
+    verrouillée). Indépendant de `published` (visibilité client), qui reste
+    affiché séparément par `PublishToggle`.
+  - **Régression corrigée dans `lib/sync/syncAppointments.ts`** : avant
+    cette tâche, un rendez-vous déjà rattaché à une campagne verrouillée
+    (`campaign_id` préservé) voyait quand même ses autres champs (`status`,
+    `start_time`, `acquisition_channel`, `booking_created_at`) rafraîchis
+    depuis Calendly à chaque synchro — un rendez-vous annulé après
+    verrouillage aurait donc pu faire passer `status='canceled'` et changer
+    silencieusement `campaign_daily_stats.calendly_appointments` (via
+    `syncCalendlyDailyStats`, qui ne compte que `status='active'`) pour une
+    campagne pourtant « figée ». Corrigé : un rendez-vous déjà rattaché à
+    une campagne verrouillée est désormais **gelé intégralement** — sa ligne
+    entière est ignorée dès le début de la boucle de synchro (`skipped`),
+    plus jamais réécrite, quel que soit le changement détecté côté Calendly.
+  - **Régression corrigée dans `lib/sync/syncCalendlyDailyStats.ts`** : la
+    fonction recalculait et ré-upsertait (de façon idempotente, mais quand
+    même) les lignes `campaign_daily_stats` d'une campagne verrouillée à
+    chaque passage. Corrigée pour exclure explicitement les campagnes
+    `sync_locked=true` de tout calcul ET de toute écriture, avant même de
+    lire les rendez-vous — même garde explicite et autoportante que
+    `syncAllCampaigns.ts`/`syncAllCampaignsDailyStats.ts` (`getLockedCampaignNumbers`),
+    plutôt que de dépendre d'un invariant tenu ailleurs (plus robuste, plus
+    facilement auditable : « aucune écriture » est une preuve plus forte que
+    « une écriture, mais toujours la même valeur »).
+  - **Validé en conditions réelles** (script jetable, aucune donnée
+    conservée) : CAS 1 sur la campagne historique n°2 (published=false,
+    sync_locked=true de départ) — Publier → published=true/sync_locked=true
+    → Dépublier → published=false/sync_locked=true (état final strictement
+    identique à l'état initial). CAS 2 sur une campagne de test 100 %
+    synthétique créée puis supprimée par le script (jamais la campagne
+    n°20, jamais une campagne réelle verrouillée de façon permanente) :
+    Publier → published=true/sync_locked=true (atomique) → preuve que
+    `getLockedCampaignNumbers()` (partagée par Meta Totaux et Meta
+    Quotidien) inclut désormais son numéro, donc exclue avant tout appel
+    Meta → une ligne `campaign_daily_stats` synthétique (42) insérée pour
+    cette campagne reste strictement inchangée après un vrai passage de
+    `syncCalendlyDailyStats()`. La correction de `syncAppointments.ts`
+    (gel d'un rendez-vous déjà rattaché en cas de changement de statut
+    Calendly après verrouillage) est vérifiée par relecture de code — sa
+    reproduction en conditions réelles nécessiterait une vraie annulation
+    Calendly sur une campagne réelle déjà verrouillée, un scénario qu'on ne
+    peut pas provoquer sans données de production, et qu'on ne cherche pas à
+    simuler artificiellement.
+
+- **Synchronisation séquentielle : une seule campagne dynamique traitée par
+  clic « Synchroniser »** (`lib/sync/syncAllCampaigns.ts`,
+  `lib/sync/syncAllCampaignsDailyStats.ts`, `lib/sync/syncAppointments.ts`,
+  `lib/sync/syncCalendlyDailyStats.ts`, `app/api/admin/sync/all/route.ts`,
+  `SyncButton.tsx`) : parmi les campagnes valides détectées côté Meta,
+  exclut `sync_locked=true` puis retient **uniquement** celle au
+  `campaign_number` le plus petit — jamais un seuil numérique codé en dur
+  (ex. `>=20`), toujours dérivé de `sync_locked` seul
+  (`selectSequentialTarget`, exportée par `syncAllCampaigns.ts` et
+  réutilisée à l'identique par les deux volets Meta et par la route legacy
+  `app/api/admin/sync/calendly/route.ts`). Les autres campagnes dynamiques
+  valides restent « en attente » (`waiting`), strictement inchangées ce
+  passage.
+  - **Meta totaux, Meta quotidien, Calendly (rattachement) et Calendly
+    quotidien ciblent tous la même campagne** en un seul clic : Meta
+    quotidien et Calendly recalculent leur propre sélection (même règle,
+    mêmes entrées) mais Calendly reçoit en plus explicitement
+    `metaTotals.targetCampaignNumber` déjà déterminé à l'étape 1, jamais
+    une redécouverte indépendante à ce stade de la chaîne. Ordre inchangé :
+    Meta totaux → Meta quotidien → Calendly (rendez-vous) → Calendly
+    quotidien, toujours séquentiel, jamais en parallèle.
+  - **Gel étendu aux campagnes "en attente"**
+    (`lib/sync/syncAppointments.ts`) : avant cette tâche, seules les
+    campagnes verrouillées étaient gelées ; une campagne dynamique non
+    ciblée ce passage (ex. n°21 pendant que n°20 est traitée) aurait vu ses
+    rendez-vous déjà rattachés réévalués contre une fenêtre de
+    correspondance réduite à la seule cible, et donc potentiellement
+    détachés (`campaign_id` remis à `null`) — une régression silencieuse.
+    Corrigé : `frozenCampaignIds` regroupe désormais TOUTE campagne autre
+    que la cible (verrouillée OU en attente), gelée intégralement, ligne
+    par ligne, exactement comme pour une campagne verrouillée.
+  - **`lib/sync/syncCalendlyDailyStats.ts` réécrite pour ne plus jamais lire
+    ni écrire que la campagne ciblée** (`.eq('campaign_id', targetId)` au
+    niveau des requêtes elles-mêmes, plus un filtrage a posteriori) — clés
+    composites `campaignId|statDate` simplifiées en simples `stat_date`
+    (une seule campagne par appel, plus besoin de désambiguïser).
+  - **Aucune campagne dynamique candidate** (`targetCampaignNumber === null`)
+    : la chaîne s'arrête net après Meta totaux (`noCampaignToSync: true`,
+    `ok: true`) — Meta quotidien et Calendly ne sont même pas lancés.
+    `SyncButton.tsx` affiche « Aucune campagne à synchroniser. » plutôt
+    qu'un rapport à quatre volets vides.
+  - **`SyncButton.tsx` nomme explicitement la campagne traitée** (« Campagne
+    20 synchronisée ») au lieu d'un compte pluralisé (« X campagne(s)
+    synchronisée(s) »), qui n'aurait plus de sens à 0 ou 1 campagne ;
+    affiche aussi les campagnes verrouillées ignorées et les campagnes en
+    attente, chacune avec leurs numéros.
+  - **Validé en conditions réelles** (script jetable, aucune campagne
+    publiée/verrouillée réellement) : campagnes 1-19 verrouillées, 20 et 21
+    dynamiques non verrouillées — `selectSequentialTarget` retourne bien
+    cible=20, en attente=[21], verrouillées=[1..19]. Simulation SÛRE du
+    verrouillage de 20 (`Set` local passé à la fonction pure, aucune
+    écriture `campaigns.sync_locked`) : la cible devient 21, plus aucune
+    campagne en attente ; campagne 20 reconfirmée `sync_locked=false`/
+    `published=false` en base après la simulation. `syncAppointments`/
+    `syncCalendlyDailyStats` réellement exécutées avec cible=20 : campagne
+    21 (ligne `campaigns`, rendez-vous, `campaign_daily_stats`) et
+    campagnes 1 à 19 (mêmes trois aspects) strictement identiques avant/
+    après (comparaison JSON complète, aucune différence). `targetCampaignNumber:
+    null` (toutes verrouillées, simulé) -> résultat vide propre, aucune
+    écriture.
+
 ## 6. Tâche immédiate
 
 1. **Audit** du dossier : confirme la présence de `meta-test.mjs`, la version de

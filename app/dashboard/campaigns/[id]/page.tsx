@@ -16,6 +16,7 @@ import {
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import KpiCard from '../../KpiCard'
+import PublishToggle from '../../PublishToggle'
 import {
   amber,
   faint,
@@ -362,7 +363,7 @@ export default async function CampaignDetailPage({
         }
       `}</style>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 4, flexWrap: 'wrap' }}>
         <Link
           href={`/dashboard${queryString}`}
           style={{
@@ -387,21 +388,40 @@ export default async function CampaignDetailPage({
           </div>
           <h1 style={{ fontWeight: 700, fontSize: 24, letterSpacing: '-.01em' }}>Campagne {campaign.campaign_number}</h1>
         </div>
-        {campaign.status ? (
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* État sync_locked (règle métier officielle, voir
+              BRIEF-CLAUDE-CODE.md) : "Validée" = verrouillée définitivement,
+              plus jamais synchronisée — jamais "Synchronisable", qui
+              suggérerait à tort qu'une action de synchro reste possible.
+              Indépendant de published (visibilité client), affiché aux deux
+              rôles comme campaign.status ci-dessous. */}
           <span
             style={{
-              marginLeft: 'auto',
               fontSize: 12,
               fontWeight: 700,
               padding: '3px 10px',
               borderRadius: 999,
-              background: surfaceAlt,
-              color: muted,
+              background: campaign.sync_locked ? softBg(indigo, 0.14) : softBg(green, 0.14),
+              color: ink,
             }}
           >
-            {campaign.status}
+            {campaign.sync_locked ? '🔒 Validée' : '🟢 En préparation'}
           </span>
-        ) : null}
+          {campaign.status ? (
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: 999,
+                background: surfaceAlt,
+                color: muted,
+              }}
+            >
+              {campaign.status}
+            </span>
+          ) : null}
+        </div>
       </div>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 4 }}>
         {resolvedRange
@@ -409,6 +429,16 @@ export default async function CampaignDetailPage({
           : formatPeriod(campaign.start_date, campaign.end_date)}
         {!resolvedRange && duration !== null ? ` · ${duration} jour${duration > 1 ? 's' : ''}` : ''}
       </p>
+      {/* Workflow complet réalisable depuis cette page (voir
+          BRIEF-CLAUDE-CODE.md) : Synchroniser (bouton global, en-tête du
+          dashboard) -> Contrôler (données ci-dessous) -> Publier (ici).
+          Admin uniquement, même règle que la liste des campagnes
+          (OverviewSection.tsx). */}
+      {isAdmin ? (
+        <div style={{ marginTop: 10 }}>
+          <PublishToggle campaignId={campaign.id} initialPublished={campaign.published} />
+        </div>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18, margin: '30px 0' }}>
         <KpiCard
