@@ -3,17 +3,23 @@
 import { useState } from 'react'
 import { accent, ink, line, muted, radius, surface, surfaceAlt, violet } from '../format'
 
+// displayName est déjà résolu côté serveur (voir computeRankedVideos dans
+// page.tsx : video_display_name -> name -> repli générique, nom exact
+// conservé, extension .mp4 incluse) — ce composant ne refait aucune
+// résolution de nom, il affiche tel quel. identityKey (nom normalisé —
+// trim + casse insensible) sert uniquement de clé React, une ligne = une
+// créative unique, déjà dédupliquée en amont.
 export type RankedVideo = {
-  metaAdId: string
-  name: string
-  videoDisplayName: string | null
+  identityKey: string
+  displayName: string
   campaignCount: number
   audienceType: 'barbier' | 'coiffeur'
   costPerLead: number | null
   hookPlay: number | null
+  retentionRate: number | null
 }
 
-type Criterion = 'cpl' | 'hook'
+type Criterion = 'cpl' | 'hook' | 'retention'
 
 function formatCostValue(n: number): string {
   return n.toFixed(2).replace('.', ',') + ' €'
@@ -23,26 +29,44 @@ function formatPctValue(n: number): string {
   return `${(n * 100).toFixed(1).replace('.', ',')} %`
 }
 
-// Même priorité d'affichage que le détail campagne (voir
-// BRIEF-CLAUDE-CODE.md) : nom réel du fichier importé dans Meta -> nom de la
-// pub Ads Manager -> repli générique. Jamais d'erreur, jamais de placeholder
-// technique.
-function videoDisplayName(video: RankedVideo): string {
-  return video.videoDisplayName?.trim() || video.name.trim() || 'Vidéo'
+const CRITERION_LABELS: Record<Criterion, string> = {
+  cpl: 'coût par lead',
+  hook: "taux d'accroche",
+  retention: 'taux de rétention',
 }
 
-export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
-  const [criterion, setCriterion] = useState<Criterion>('cpl')
+export default function VideoRanking({ videos, isAdmin }: { videos: RankedVideo[]; isAdmin: boolean }) {
+  // Coût par lead masqué pour un compte client (voir BRIEF-CLAUDE-CODE.md,
+  // même règle que "Leads Meta"/"Coût par Lead Meta" ailleurs sur le
+  // dashboard) : le critère ne doit jamais pouvoir valoir 'cpl' hors admin.
+  // Accroche et rétention restent visibles pour les deux rôles.
+  const [criterion, setCriterion] = useState<Criterion>(isAdmin ? 'cpl' : 'hook')
 
-  const metricOf = (v: RankedVideo) => (criterion === 'cpl' ? v.costPerLead : v.hookPlay)
+  const options = (
+    [
+      ...(isAdmin ? [{ key: 'cpl' as const, label: 'Meilleur coût par lead' }] : []),
+      { key: 'hook' as const, label: "Meilleur taux d'accroche" },
+      { key: 'retention' as const, label: 'Meilleur taux de rétention' },
+    ] as const
+  )
+
+  const metricOf = (v: RankedVideo) =>
+    criterion === 'cpl' ? v.costPerLead : criterion === 'hook' ? v.hookPlay : v.retentionRate
   const ranked = videos.filter((v) => metricOf(v) !== null)
   const unranked = videos.filter((v) => metricOf(v) === null)
 
+  // Coût/lead : plus bas est meilleur (croissant). Accroche/rétention : plus
+  // haut est meilleur (décroissant).
   ranked.sort((a, b) => {
     const ma = metricOf(a) as number
     const mb = metricOf(b) as number
     return criterion === 'cpl' ? ma - mb : mb - ma
   })
+
+  const formatMetric = (v: RankedVideo) => {
+    if (criterion === 'cpl') return formatCostValue(v.costPerLead as number)
+    return formatPctValue((criterion === 'hook' ? v.hookPlay : v.retentionRate) as number)
+  }
 
   return (
     <div>
@@ -54,12 +78,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
           </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, background: surfaceAlt, border: `1px solid ${line}`, borderRadius: 999, padding: 3 }}>
-          {(
-            [
-              { key: 'cpl', label: 'Meilleur coût par lead' },
-              { key: 'hook', label: "Meilleur taux d'accroche" },
-            ] as const
-          ).map((opt) => (
+          {options.map((opt) => (
             <button
               key={opt.key}
               type="button"
@@ -86,7 +105,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {ranked.map((v, i) => (
             <div
-              key={v.metaAdId}
+              key={v.identityKey}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '26px 1fr auto',
@@ -103,19 +122,15 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
               </div>
               <div>
                 <b style={{ fontSize: 14, display: 'block', color: v.audienceType === 'barbier' ? accent : violet }}>
-                  {videoDisplayName(v)}
+                  {v.displayName}
                 </b>
                 <span style={{ fontSize: 12, color: muted }}>
-                  diffusée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
+                  Utilisée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
                 </span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <b style={{ fontFamily: 'inherit', fontWeight: 600, fontSize: 19 }}>
-                  {criterion === 'cpl' ? formatCostValue(v.costPerLead as number) : formatPctValue(v.hookPlay as number)}
-                </b>
-                <span style={{ fontSize: 11, color: muted, display: 'block' }}>
-                  {criterion === 'cpl' ? 'coût par lead' : "taux d'accroche"}
-                </span>
+                <b style={{ fontFamily: 'inherit', fontWeight: 600, fontSize: 19 }}>{formatMetric(v)}</b>
+                <span style={{ fontSize: 11, color: muted, display: 'block' }}>{CRITERION_LABELS[criterion]}</span>
               </div>
             </div>
           ))}
@@ -128,7 +143,7 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
               </p>
               {unranked.map((v) => (
                 <div
-                  key={v.metaAdId}
+                  key={v.identityKey}
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '26px 1fr auto',
@@ -143,9 +158,9 @@ export default function VideoRanking({ videos }: { videos: RankedVideo[] }) {
                 >
                   <div style={{ textAlign: 'center', color: muted }}>—</div>
                   <div>
-                    <b style={{ fontSize: 14, display: 'block', color: ink }}>{videoDisplayName(v)}</b>
+                    <b style={{ fontSize: 14, display: 'block', color: ink }}>{v.displayName}</b>
                     <span style={{ fontSize: 12, color: muted }}>
-                      diffusée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
+                      Utilisée sur {v.campaignCount} campagne{v.campaignCount > 1 ? 's' : ''}
                     </span>
                   </div>
                   <div style={{ textAlign: 'right', color: muted, fontSize: 12.5 }}>Non disponible</div>

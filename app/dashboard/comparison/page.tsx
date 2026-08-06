@@ -5,7 +5,6 @@ import {
   appointmentsPerDay,
   campaignDurationDays,
   costPerMetaPixelLead,
-  hookRate,
   isDateRangePreset,
   realAppointments,
   realCostPerAppointment,
@@ -64,12 +63,22 @@ function TopBadge() {
   )
 }
 
-// Classement vidéos : agrège par meta_ad_id (une vidéo réelle peut revenir
-// sur plusieurs campagnes) ; sinon une ligne par vidéo. Coût/lead et accroche
-// recalculés sur les totaux agrégés (jamais sur des moyennes de ratios, pour
-// rester exact). Aucune granularité journalière côté audiences/vidéos : ce
-// classement est toujours "toutes périodes confondues", indépendamment du
-// filtre de période — partagé par les deux chemins (période active ou non).
+// Classement vidéos : déduplication par IDENTITÉ RÉELLE de la créative, pas
+// par meta_ad_id. Cause des doublons observés avant cette correction :
+// l'import historique Excel (scripts/import-historical-excel.ts) attribue à
+// chaque vidéo un meta_ad_id SYNTHÉTIQUE de la forme
+// "excel-import:campaign-{N}:{audienceType}:video", unique par
+// campagne+audience — deux occurrences de la MÊME créative (ex. "video 3 -
+// video ciseaux.mp4", réutilisée sur les campagnes 3, 11 et 15) recevaient
+// donc trois meta_ad_id distincts et apparaissaient comme trois vidéos
+// différentes dans le classement au lieu d'une seule agrégée.
+//
+// Clé d'identité retenue (voir BRIEF-CLAUDE-CODE.md) : video_display_name
+// s'il est renseigné, sinon videos.name — normalisée UNIQUEMENT pour la
+// comparaison (trim + casse insensible), jamais pour l'affichage (le nom
+// exact, extension .mp4 incluse, est conservé tel quel dans RankedVideo.
+// displayName). Deux vidéos dont les noms diffèrent réellement, même
+// proches, restent deux lignes distinctes.
 async function computeRankedVideos(
   supabase: Awaited<ReturnType<typeof createClient>>,
   campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
@@ -88,7 +97,7 @@ async function computeRankedVideos(
 
   const { data: videoData } = await supabase
     .from('videos')
-    .select('audience_id, meta_ad_id, name, video_display_name, impressions, video_plays_3s, hook_rate_pct')
+    .select('audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, video_p100, hook_rate_pct, retention_rate_pct')
     .in(
       'audience_id',
       audiences.map((a) => a.id)
@@ -100,23 +109,26 @@ async function computeRankedVideos(
   const campaignById = new Map(campaigns.map((c) => [c.id, c]))
 
   type VideoGroup = {
-    metaAdId: string
-    name: string
-    videoDisplayName: string | null
+    displayName: string
     audienceType: 'barbier' | 'coiffeur'
     campaignNumbers: Set<number>
-    totalImpressions: number
-    totalPlays3s: number
     totalSpend: number
     totalLeads: number
-    // Priorité Excel (voir BRIEF-CLAUDE-CODE.md) : vrai seulement si TOUTES
-    // les lignes contribuant au groupe viennent de campagnes historiques
-    // verrouillées avec un taux importé — un groupe mêlant une campagne
-    // dynamique n'utilise jamais ce repli (ses compteurs bruts réels
-    // priment). En pratique un meta_ad_id historique (clé synthétique) est
-    // toujours propre à une seule campagne+audience, jamais partagé.
-    allLockedWithExcelRate: boolean
-    excelHookRatePct: number | null
+    // Accroche et rétention agrégées indépendamment l'une de l'autre (une
+    // occurrence peut avoir l'une en pct Excel et l'autre en compteurs bruts
+    // — même règle de priorité par champ que campaigns/[id]/page.tsx :
+    // sync_locked + pct non nul -> le pct Excel gouverne CETTE occurrence
+    // pour CE champ ; sinon -> ses compteurs bruts contribuent aux sommes
+    // "raw" ci-dessous. Formule finale unique (voir finalizeRate) : jamais
+    // de moyenne simple, jamais de source silencieusement privilégiée.
+    rawHookImpressions: number
+    rawHookPlays3s: number
+    excelHookWeightedSum: number
+    excelHookWeight: number
+    rawRetentionPlays3s: number
+    rawRetentionP100: number
+    excelRetentionWeightedSum: number
+    excelRetentionWeight: number
   }
 
   const groups = new Map<string, VideoGroup>()
@@ -124,53 +136,103 @@ async function computeRankedVideos(
     const audience = audienceById.get(video.audience_id)
     if (!audience) continue
 
-    const existing = groups.get(video.meta_ad_id)
     const campaignId = campaignByAudienceId.get(video.audience_id)
     const campaign = campaignId ? campaignById.get(campaignId) : undefined
     const campaignNumber = campaign?.campaign_number
-    const rowLockedWithExcelRate = Boolean(campaign?.sync_locked) && video.hook_rate_pct != null
 
-    // impressions/video_plays_3s peuvent être null pour une vidéo issue de
-    // l'import historique Excel (voir types/database.ts, Video) : une
-    // contribution "inconnue" compte pour 0 dans la SOMME du groupe (jamais
-    // stockée comme telle sur la ligne elle-même).
-    if (existing) {
-      existing.totalImpressions += video.impressions ?? 0
-      existing.totalPlays3s += video.video_plays_3s ?? 0
-      existing.totalSpend += audience.meta_spend
-      existing.totalLeads += audience.meta_pixel_leads
-      existing.allLockedWithExcelRate = existing.allLockedWithExcelRate && rowLockedWithExcelRate
-      if (rowLockedWithExcelRate) existing.excelHookRatePct = video.hook_rate_pct
-      if (campaignNumber !== undefined) existing.campaignNumbers.add(campaignNumber)
-    } else {
-      groups.set(video.meta_ad_id, {
-        metaAdId: video.meta_ad_id,
-        name: video.name,
-        videoDisplayName: video.video_display_name,
+    const displayName = video.video_display_name?.trim() || video.name.trim() || 'Vidéo'
+    const identityKey = displayName.toLowerCase()
+
+    let group = groups.get(identityKey)
+    if (!group) {
+      group = {
+        displayName,
         audienceType: audience.audience_type,
-        campaignNumbers: new Set(campaignNumber !== undefined ? [campaignNumber] : []),
-        totalImpressions: video.impressions ?? 0,
-        totalPlays3s: video.video_plays_3s ?? 0,
-        totalSpend: audience.meta_spend,
-        totalLeads: audience.meta_pixel_leads,
-        allLockedWithExcelRate: rowLockedWithExcelRate,
-        excelHookRatePct: rowLockedWithExcelRate ? video.hook_rate_pct : null,
-      })
+        campaignNumbers: new Set<number>(),
+        totalSpend: 0,
+        totalLeads: 0,
+        rawHookImpressions: 0,
+        rawHookPlays3s: 0,
+        excelHookWeightedSum: 0,
+        excelHookWeight: 0,
+        rawRetentionPlays3s: 0,
+        rawRetentionP100: 0,
+        excelRetentionWeightedSum: 0,
+        excelRetentionWeight: 0,
+      }
+      groups.set(identityKey, group)
+    }
+
+    group.totalSpend += audience.meta_spend
+    group.totalLeads += audience.meta_pixel_leads
+    if (campaignNumber !== undefined) group.campaignNumbers.add(campaignNumber)
+
+    const hookFromExcel = Boolean(campaign?.sync_locked) && video.hook_rate_pct != null
+    if (hookFromExcel) {
+      // Pondération par les vues (video_plays, toujours renseigné — voir
+      // types/database.ts) : le volume le plus pertinent réellement
+      // disponible pour une occurrence Excel, qui n'a pas de compteurs bruts
+      // impressions/video_plays_3s. Jamais une moyenne simple non pondérée.
+      group.excelHookWeightedSum += (video.hook_rate_pct as number) * video.video_plays
+      group.excelHookWeight += video.video_plays
+    } else {
+      // impressions/video_plays_3s peuvent être null (vidéo historique
+      // jamais synchronisée) : une contribution "inconnue" compte pour 0
+      // dans la SOMME du groupe, jamais inventée.
+      group.rawHookImpressions += video.impressions ?? 0
+      group.rawHookPlays3s += video.video_plays_3s ?? 0
+    }
+
+    const retentionFromExcel = Boolean(campaign?.sync_locked) && video.retention_rate_pct != null
+    if (retentionFromExcel) {
+      group.excelRetentionWeightedSum += (video.retention_rate_pct as number) * video.video_plays
+      group.excelRetentionWeight += video.video_plays
+    } else {
+      group.rawRetentionPlays3s += video.video_plays_3s ?? 0
+      group.rawRetentionP100 += video.video_p100 ?? 0
     }
   }
 
-  // Priorité d'affichage (même règle que app/dashboard/campaigns/[id]/
-  // page.tsx) : campagne(s) historique(s) verrouillée(s) avec un taux Excel
-  // -> ce taux ; sinon -> calcul réel depuis les compteurs bruts agrégés
-  // (division par zéro évitée -> null, "non classable" dans VideoRanking.tsx).
+  // Formule unique pour l'accroche, qu'une occurrence du groupe soit
+  // dynamique (compteurs Meta bruts), historique (pct Excel) ou un mélange
+  // des deux : numérateur = Σ(video_plays_3s bruts) + Σ(hook_rate_pct_excel
+  // × video_plays_excel) ; dénominateur = Σ(impressions brutes) +
+  // Σ(video_plays_excel). Cette formule se réduit exactement à
+  // hookRate(Σplays3s, Σimpressions) — la formule déjà utilisée avant cette
+  // tâche — quand toutes les occurrences sont dynamiques (aucun terme
+  // Excel), et à la moyenne pondérée par les vues quand toutes sont
+  // historiques (aucun terme brut) : une seule règle documentée, jamais de
+  // source privilégiée silencieusement en cas de mélange.
+  function finalizeHookRate(g: VideoGroup): number | null {
+    const numerator = g.rawHookPlays3s + g.excelHookWeightedSum
+    const denominator = g.rawHookImpressions + g.excelHookWeight
+    return denominator > 0 ? numerator / denominator : null
+  }
+
+  // Même principe pour la rétention (formule Meta : video_p100 ÷
+  // video_plays_3s, voir lib/calculations.ts retentionRate) : numérateur =
+  // Σ(video_p100 bruts) + Σ(retention_rate_pct_excel × video_plays_excel) ;
+  // dénominateur = Σ(video_plays_3s bruts) + Σ(video_plays_excel).
+  function finalizeRetentionRate(g: VideoGroup): number | null {
+    const numerator = g.rawRetentionP100 + g.excelRetentionWeightedSum
+    const denominator = g.rawRetentionPlays3s + g.excelRetentionWeight
+    return denominator > 0 ? numerator / denominator : null
+  }
+
+  // Coût/lead : jamais une moyenne des coûts/lead individuels, toujours le
+  // ratio des totaux agrégés (Σdépenses ÷ Σleads) — costPerMetaPixelLead
+  // renvoie déjà null si Σleads = 0 (aucun lead total -> "—", jamais classée
+  // meilleure vidéo, voir VideoRanking.tsx). meta_pixel_leads n'est jamais
+  // null (voir types/database.ts, Audience) : une occurrence sans lead
+  // contribue un vrai 0 à la somme, jamais une valeur inventée.
   return Array.from(groups.values()).map((g) => ({
-    metaAdId: g.metaAdId,
-    name: g.name,
-    videoDisplayName: g.videoDisplayName,
+    identityKey: g.displayName.toLowerCase(),
+    displayName: g.displayName,
     campaignCount: g.campaignNumbers.size,
     audienceType: g.audienceType,
     costPerLead: costPerMetaPixelLead(g.totalSpend, g.totalLeads),
-    hookPlay: g.allLockedWithExcelRate && g.excelHookRatePct !== null ? g.excelHookRatePct : hookRate(g.totalPlays3s, g.totalImpressions),
+    hookPlay: finalizeHookRate(g),
+    retentionRate: finalizeRetentionRate(g),
   }))
 }
 
@@ -329,7 +391,10 @@ export default async function ComparisonPage({
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
               <thead>
                 <tr>
-                  {['Campagne', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta'].map((label) => (
+                  {(isAdmin
+                    ? ['Campagne', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta']
+                    : ['Campagne', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV']
+                  ).map((label) => (
                     <th
                       key={label}
                       style={{
@@ -372,7 +437,9 @@ export default async function ComparisonPage({
                         {formatCost(row.realCostPerAppt)}
                         {isBestRealCostPerAppointment ? <TopBadge /> : null}
                       </td>
-                      <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>{row.leads}</td>
+                      {isAdmin ? (
+                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>{row.leads}</td>
+                      ) : null}
                     </tr>
                   )
                 })}
@@ -429,7 +496,7 @@ export default async function ComparisonPage({
                       {isBestRealCostPerAppointment ? <TopBadge /> : null}
                     </div>
                   </div>
-                  <span style={{ color: muted, fontSize: 12.5 }}>{row.leads} leads Meta</span>
+                  {isAdmin ? <span style={{ color: muted, fontSize: 12.5 }}>{row.leads} leads Meta</span> : null}
                 </div>
               </div>
             )
@@ -440,7 +507,7 @@ export default async function ComparisonPage({
           <p style={{ color: muted, fontSize: 12.5, marginBottom: 10 }}>
             Classement des vidéos : toutes périodes confondues (pas de détail journalier par audience/vidéo).
           </p>
-          <VideoRanking videos={rankedVideos} />
+          <VideoRanking videos={rankedVideos} isAdmin={isAdmin} />
         </div>
       </main>
     )
@@ -550,7 +617,10 @@ export default async function ComparisonPage({
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
                 <thead>
                   <tr>
-                    {['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta'].map((label) => (
+                    {(isAdmin
+                      ? ['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV', 'Leads Meta']
+                      : ['Campagne', 'Durée', 'RDV Calendly', 'RDV / j', 'Dépensé', 'Coût réel / RDV']
+                    ).map((label) => (
                       <th
                         key={label}
                         style={{
@@ -596,9 +666,11 @@ export default async function ComparisonPage({
                           {formatCost(row.realCostPerAppt)}
                           {isBestRealCostPerAppointment ? <TopBadge /> : null}
                         </td>
-                        <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>
-                          {row.campaign.meta_pixel_leads}
-                        </td>
+                        {isAdmin ? (
+                          <td style={{ padding: '14px 16px', fontSize: 13.5, textAlign: 'right', color: muted }}>
+                            {row.campaign.meta_pixel_leads}
+                          </td>
+                        ) : null}
                       </tr>
                     )
                   })}
@@ -660,7 +732,9 @@ export default async function ComparisonPage({
                         {isBestRealCostPerAppointment ? <TopBadge /> : null}
                       </div>
                     </div>
-                    <span style={{ color: muted, fontSize: 12.5 }}>{row.campaign.meta_pixel_leads} leads Meta</span>
+                    {isAdmin ? (
+                      <span style={{ color: muted, fontSize: 12.5 }}>{row.campaign.meta_pixel_leads} leads Meta</span>
+                    ) : null}
                   </div>
                 </div>
               )
@@ -668,7 +742,7 @@ export default async function ComparisonPage({
           </div>
 
           <div style={{ marginTop: 32 }}>
-            <VideoRanking videos={rankedVideos} />
+            <VideoRanking videos={rankedVideos} isAdmin={isAdmin} />
           </div>
         </>
       )}
