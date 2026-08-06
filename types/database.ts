@@ -56,10 +56,23 @@ export type Audience = {
   meta_spend: number
   meta_pixel_leads: number
   // Répartition des leads par plateforme — donnée de l'import historique
-  // Excel (lib/import/importHistoricalExcel.ts), jamais renseignée par la
+  // Excel (scripts/import-historical-excel.ts), jamais renseignée par la
   // synchro Meta réelle (nullable, migration 20260808000000).
   facebook_leads: number | null
   instagram_leads: number | null
+  // Répartition des leads par genre x tranche d'âge — même origine
+  // (import historique Excel uniquement, jamais Meta), au niveau de CETTE
+  // audience (pas de la campagne : distinct de appointment_breakdowns, qui
+  // reste au niveau campagne, sans genre, et avec un palier "55 et +" que
+  // ces 4 tranches n'ont pas — migration 20260809000000).
+  leads_male_18_24: number | null
+  leads_male_25_34: number | null
+  leads_male_35_44: number | null
+  leads_male_45_54: number | null
+  leads_female_18_24: number | null
+  leads_female_25_34: number | null
+  leads_female_35_44: number | null
+  leads_female_45_54: number | null
   created_at: string
   updated_at: string
 }
@@ -232,12 +245,45 @@ export interface Database {
       }
       audiences: {
         Row: Audience
-        // facebook_leads/instagram_leads optionnels à l'insert : seul
-        // l'import historique Excel les renseigne (lib/import/
-        // importHistoricalExcel.ts) ; la synchro Meta réelle (mapper.ts) les
-        // omet du payload, défaut colonne NULL appliqué à la création.
-        Insert: Partial<Pick<Audience, 'id' | 'created_at' | 'updated_at' | 'facebook_leads' | 'instagram_leads'>> &
-          Omit<Audience, 'id' | 'created_at' | 'updated_at' | 'facebook_leads' | 'instagram_leads'>
+        // facebook_leads/instagram_leads/leads_male_*/leads_female_*
+        // optionnels à l'insert : seul l'import historique Excel les
+        // renseigne (scripts/import-historical-excel.ts) ; la synchro Meta
+        // réelle (mapper.ts) les omet du payload, défaut colonne NULL
+        // appliqué à la création.
+        Insert: Partial<
+          Pick<
+            Audience,
+            | 'id'
+            | 'created_at'
+            | 'updated_at'
+            | 'facebook_leads'
+            | 'instagram_leads'
+            | 'leads_male_18_24'
+            | 'leads_male_25_34'
+            | 'leads_male_35_44'
+            | 'leads_male_45_54'
+            | 'leads_female_18_24'
+            | 'leads_female_25_34'
+            | 'leads_female_35_44'
+            | 'leads_female_45_54'
+          >
+        > &
+          Omit<
+            Audience,
+            | 'id'
+            | 'created_at'
+            | 'updated_at'
+            | 'facebook_leads'
+            | 'instagram_leads'
+            | 'leads_male_18_24'
+            | 'leads_male_25_34'
+            | 'leads_male_35_44'
+            | 'leads_male_45_54'
+            | 'leads_female_18_24'
+            | 'leads_female_25_34'
+            | 'leads_female_35_44'
+            | 'leads_female_45_54'
+          >
         Update: Partial<Audience>
         Relationships: []
       }
