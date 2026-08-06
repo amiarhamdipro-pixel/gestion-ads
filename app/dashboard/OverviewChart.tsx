@@ -269,7 +269,13 @@ export default function OverviewChart({
   const marginLeft = 54
   const marginRight = 44
   const marginTop = 20
-  const marginBottom = grouping === 'month' ? 40 : 48
+  // Marge basse : espace dédié aux libellés X (numéro de campagne/mois,
+  // + durée en jours pour le groupement "Par campagne"), toujours SOUS le
+  // tracé (baseline), jamais recouverte par la courbe des dépenses (qui ne
+  // descend jamais plus bas que la baseline — voir yForSpend ci-dessous).
+  // Relevée pour garantir une marge de lecture confortable entre la
+  // baseline et la première ligne de texte, sur les deux groupements.
+  const marginBottom = grouping === 'month' ? 46 : 58
   const plotWidth = width - marginLeft - marginRight
   const plotHeight = height - marginTop - marginBottom
   const baseline = marginTop + plotHeight
@@ -387,7 +393,7 @@ export default function OverviewChart({
             points={linePoints}
             fill="none"
             stroke={chartOrange}
-            strokeWidth={2.5}
+            strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -397,10 +403,10 @@ export default function OverviewChart({
               className="ov-dot"
               cx={xCenter(i)}
               cy={yForSpend(p.spend)}
-              r={4}
+              r={3.5}
               fill={chartOrange}
               stroke={surface}
-              strokeWidth={2}
+              strokeWidth={1.5}
             >
               <title>{`${p.tooltipLabel} — ${fmtSpend(p.spend)} € dépensés${effectiveMode === 'day' ? ' / jour' : ''}`}</title>
             </circle>
