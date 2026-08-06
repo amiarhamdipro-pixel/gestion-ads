@@ -253,8 +253,15 @@ export interface Database {
       }
       appointment_breakdowns: {
         Row: AppointmentBreakdown
-        Insert: Partial<Pick<AppointmentBreakdown, 'id' | 'created_at' | 'updated_at'>> &
-          Omit<AppointmentBreakdown, 'id' | 'created_at' | 'updated_at'>
+        // instagram_count/facebook_count optionnels à l'insert : répartition
+        // RDV par plateforme, hors périmètre de la synchro par tranche d'âge
+        // (lib/sync/mapper.ts, mapAgeInsightsToBreakdownInsert) — jamais
+        // renseignés par elle, défaut colonne (0) préservé tel quel, même
+        // principe que facebook_leads/instagram_leads sur audiences ci-dessus.
+        Insert: Partial<
+          Pick<AppointmentBreakdown, 'id' | 'created_at' | 'updated_at' | 'instagram_count' | 'facebook_count'>
+        > &
+          Omit<AppointmentBreakdown, 'id' | 'created_at' | 'updated_at' | 'instagram_count' | 'facebook_count'>
         Update: Partial<AppointmentBreakdown>
         Relationships: []
       }

@@ -95,6 +95,42 @@ function groupByAcquisitionChannel(rawChannels: (string | null)[]): ChannelBreak
 // toutes déjà présentes dans la palette — aucune teinte inventée.
 const CHANNEL_COLORS = [indigo, violet, amber, green, red, gray]
 
+// Tranches d'âge Meta réellement stockées (appointment_breakdowns, voir
+// lib/sync/mapper.ts, mapAgeInsightsToBreakdownInsert — age_55_plus regroupe
+// les tranches Meta 55-64 et 65+). Ordre chronologique fixe (pas trié par
+// volume, contrairement au canal d'acquisition) : plus lisible pour une
+// donnée intrinsèquement ordonnée. Réutilise le type ChannelBreakdown (même
+// forme : label/count/ratio) et CHANNEL_COLORS ci-dessus (5 tranches ≤ 6
+// couleurs), sans dupliquer de logique de rendu.
+const AGE_BUCKETS = [
+  { key: 'age_18_24', label: '18-24 ans' },
+  { key: 'age_25_34', label: '25-34 ans' },
+  { key: 'age_35_44', label: '35-44 ans' },
+  { key: 'age_45_54', label: '45-54 ans' },
+  { key: 'age_55_plus', label: '55 ans et +' },
+] as const
+
+type AgeBreakdownRow = Pick<
+  Record<(typeof AGE_BUCKETS)[number]['key'], number>,
+  (typeof AGE_BUCKETS)[number]['key']
+>
+
+// Leads Meta dont l'âge n'est pas déterminable ("Unknown" côté Meta) n'ont
+// pas de colonne dédiée (voir lib/sync/mapper.ts) : exclus du total, jamais
+// répartis arbitrairement sur les tranches connues — la somme des tranches
+// affichées peut donc être inférieure aux leads Meta totaux de la campagne,
+// honnêtement (pas un bug).
+function buildAgeBreakdown(row: AgeBreakdownRow | null): ChannelBreakdown[] {
+  if (!row) return []
+  const total = AGE_BUCKETS.reduce((sum, bucket) => sum + row[bucket.key], 0)
+  if (total === 0) return []
+  return AGE_BUCKETS.filter((bucket) => row[bucket.key] > 0).map((bucket) => ({
+    channel: bucket.label,
+    count: row[bucket.key],
+    ratio: row[bucket.key] / total,
+  }))
+}
+
 type DonutSegment = { color: string; dasharray: string; dashoffset: number }
 
 function donutSegments(rows: ChannelBreakdown[], donutTotal: number, radiusPx: number): DonutSegment[] {
@@ -209,6 +245,20 @@ export default async function CampaignDetailPage({
   const manualAdjustmentForBreakdown = resolvedRange ? 0 : campaign.manual_appointments_adjustment
   const channelTotal = channelBreakdown.reduce((sum, row) => sum + row.count, 0)
   const breakdownGrandTotal = channelTotal + manualAdjustmentForBreakdown
+
+  // Répartition des leads Meta par tranche d'âge : une ligne par campagne
+  // (clé unique campaign_id, voir appointment_breakdowns) ou aucune si la
+  // campagne n'a jamais été synchronisée avec ce breakdown (jamais le cas
+  // pour une campagne historique sync_locked=true — voir lib/sync/syncCampaign.ts,
+  // qui n'est appelé que pour les campagnes non verrouillées).
+  const { data: ageBreakdownRow } = await supabase
+    .from('appointment_breakdowns')
+    .select('age_18_24, age_25_34, age_35_44, age_45_54, age_55_plus')
+    .eq('campaign_id', campaign.id)
+    .maybeSingle()
+
+  const ageBreakdown = buildAgeBreakdown(ageBreakdownRow)
+  const ageBreakdownTotal = ageBreakdown.reduce((sum, row) => sum + row.count, 0)
 
   const { data: audiences } = await supabase
     .from('audiences')
@@ -464,6 +514,83 @@ export default async function CampaignDetailPage({
                 </span>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 32, marginBottom: 16 }}>
+        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+          Répartition des leads Meta par tranche d&apos;âge
+          {resolvedRange ? (
+            <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
+          ) : null}
+        </h2>
+        {resolvedRange ? (
+          <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
+            Pas de détail journalier par tranche d&apos;âge — ces chiffres portent sur toute la durée de la
+            campagne, pas sur la période sélectionnée.
+          </p>
+        ) : null}
+      </div>
+
+      {ageBreakdownTotal === 0 ? (
+        <p style={{ color: muted }}>Aucun lead Meta avec tranche d&apos;âge connue pour cette campagne.</p>
+      ) : (
+        <div
+          style={{
+            background: surface,
+            border: `1px solid ${line}`,
+            borderRadius: radius,
+            padding: 20,
+            display: 'flex',
+            gap: 28,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${ageBreakdownTotal} leads Meta répartis par tranche d'âge`}>
+            <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
+            {donutSegments(ageBreakdown, ageBreakdownTotal, 54).map((seg, i) => (
+              <circle
+                key={ageBreakdown[i].channel}
+                cx={70}
+                cy={70}
+                r={54}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={18}
+                strokeDasharray={seg.dasharray}
+                strokeDashoffset={seg.dashoffset}
+                transform="rotate(-90 70 70)"
+              />
+            ))}
+            <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
+              {ageBreakdownTotal}
+            </text>
+            <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
+              leads
+            </text>
+          </svg>
+
+          <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {ageBreakdown.map((row, i) => (
+              <div key={row.channel} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 3,
+                    background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 500 }}>{row.channel}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{row.count}</span>
+                <span style={{ fontSize: 12.5, color: muted, minWidth: 50, textAlign: 'right' }}>
+                  {formatPct(row.count / ageBreakdownTotal)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -2,7 +2,15 @@
 // principe que meta-test.mjs (Phase 0) sous forme de fonctions typées et
 // réutilisables. N'écrit rien en base : voir mapper.ts / groupByCampaign.ts.
 
-import type { MetaAd, MetaAdInsights, MetaAdSet, MetaAdSetDailyInsight, MetaAdSetInsights, MetaVideoTitle } from './types'
+import type {
+  MetaAd,
+  MetaAdInsights,
+  MetaAdSet,
+  MetaAdSetAgeInsight,
+  MetaAdSetDailyInsight,
+  MetaAdSetInsights,
+  MetaVideoTitle,
+} from './types'
 
 type MetaApiErrorResponse = {
   error: { message: string; code: number }
@@ -100,6 +108,22 @@ export async function fetchAdSetDailyInsights(
   return metaApiGetAll<MetaAdSetDailyInsight>(`${adSetId}/insights`, {
     fields: 'date_start,date_stop,spend,actions',
     time_increment: '1',
+    date_preset: datePreset,
+  })
+}
+
+// Répartition des leads par tranche d'âge (breakdowns=age), vérifiée en
+// conditions réelles sur la campagne n°20 : une ligne par tranche d'âge
+// Meta, avec actions incluant le lead pixel (LEAD_ACTION_TYPE) déjà utilisé
+// ailleurs (fetchAdSetInsights). Même pagination que les autres endpoints
+// insights (metaApiGetAll).
+export async function fetchAdSetAgeInsights(
+  adSetId: string,
+  datePreset = 'maximum'
+): Promise<MetaAdSetAgeInsight[]> {
+  return metaApiGetAll<MetaAdSetAgeInsight>(`${adSetId}/insights`, {
+    fields: 'spend,actions',
+    breakdowns: 'age',
     date_preset: datePreset,
   })
 }

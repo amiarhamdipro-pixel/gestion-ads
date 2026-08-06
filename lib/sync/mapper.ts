@@ -8,6 +8,7 @@ import type {
   MetaAd,
   MetaAdInsights,
   MetaAdSet,
+  MetaAdSetAgeInsight,
   MetaAdSetDailyInsight,
   MetaAdSetInsights,
   MetaActionValue,
@@ -15,6 +16,7 @@ import type {
 
 type AudienceInsert = Database['public']['Tables']['audiences']['Insert']
 type VideoInsert = Database['public']['Tables']['videos']['Insert']
+type AppointmentBreakdownInsert = Database['public']['Tables']['appointment_breakdowns']['Insert']
 
 export function extractActionValue(actions: MetaAction[] | undefined, actionType: string): number {
   const match = actions?.find((action) => action.action_type === actionType)
@@ -105,4 +107,44 @@ export function mapAdToVideoInsert(
     video_p75: firstActionValue(insights?.video_p75_watched_actions),
     video_p100: firstActionValue(insights?.video_p100_watched_actions),
   }
+}
+
+// Colonnes réellement présentes dans appointment_breakdowns (schéma initial,
+// inchangé). age_55_plus regroupe les deux dernières tranches Meta (55-64 et
+// 65+) : le schéma n'a qu'un seul palier "55 et +", jamais scindé. Toute
+// valeur d'âge Meta absente de cette table (observé : "Unknown", leads dont
+// Meta ne peut pas déterminer l'âge) est délibérément ignorée — aucune
+// colonne ne peut l'accueillir sans répartition arbitraire sur les tranches
+// connues, donc jamais comptée nulle part (voir mapAgeInsightsToBreakdownInsert).
+const AGE_BUCKET_COLUMNS: Record<string, 'age_18_24' | 'age_25_34' | 'age_35_44' | 'age_45_54' | 'age_55_plus'> = {
+  '18-24': 'age_18_24',
+  '25-34': 'age_25_34',
+  '35-44': 'age_35_44',
+  '45-54': 'age_45_54',
+  '55-64': 'age_55_plus',
+  '65+': 'age_55_plus',
+}
+
+// Agrège les deux ad sets (barbier + coiffeur, même principe que
+// aggregateDailyInsights ci-dessus) : appointment_breakdowns est une table
+// au niveau campagne (une ligne, clé unique campaign_id), pas par audience.
+// instagram_count/facebook_count (mêmes colonnes, répartition RDV par
+// plateforme) sont volontairement absents du retour : hors périmètre de
+// cette fonction (répartition par tranche d'âge uniquement), leur défaut
+// colonne (0) reste donc intact lors de l'upsert (voir types/database.ts).
+export function mapAgeInsightsToBreakdownInsert(
+  campaignId: string,
+  insightsA: MetaAdSetAgeInsight[],
+  insightsB: MetaAdSetAgeInsight[],
+  leadActionType: string
+): AppointmentBreakdownInsert {
+  const totals = { age_18_24: 0, age_25_34: 0, age_35_44: 0, age_45_54: 0, age_55_plus: 0 }
+
+  for (const row of [...insightsA, ...insightsB]) {
+    const column = AGE_BUCKET_COLUMNS[row.age]
+    if (!column) continue
+    totals[column] += extractActionValue(row.actions, leadActionType)
+  }
+
+  return { campaign_id: campaignId, ...totals }
 }

@@ -45,13 +45,14 @@ import { logError } from '@/lib/logger'
 import {
   fetchAdInsights,
   fetchAdSetAds,
+  fetchAdSetAgeInsights,
   fetchAdSetDailyInsights,
   fetchAdSetInsights,
   fetchCampaignAdSets,
   fetchVideoTitle,
 } from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
-import { extractVideoId, mapAdSetToAudienceInsert, mapAdToVideoInsert } from './mapper'
+import { extractVideoId, mapAdSetToAudienceInsert, mapAdToVideoInsert, mapAgeInsightsToBreakdownInsert } from './mapper'
 import type { MetaAd, SyncCampaignParams, SyncCampaignResult } from './types'
 
 function mergeStatus(statusA: string, statusB: string): string {
@@ -275,5 +276,31 @@ async function runSync(
     throw new Error(`Échec upsert vidéos campagne n°${campaignNumber} : ${videoError?.message ?? 'réponse vide'}`)
   }
 
-  return { campaign, audiences: audienceRows, videos: videoRows }
+  // Répartition des leads par tranche d'âge (breakdowns=age), agrégée sur
+  // les deux ad sets comme meta_spend/meta_pixel_leads ci-dessus — voir
+  // mapAgeInsightsToBreakdownInsert (lib/sync/mapper.ts).
+  const [barbierAgeInsights, coiffeurAgeInsights] = await Promise.all([
+    fetchAdSetAgeInsights(barbierAdSet.id),
+    fetchAdSetAgeInsights(coiffeurAdSet.id),
+  ])
+  const breakdownInsert = mapAgeInsightsToBreakdownInsert(
+    campaign.id,
+    barbierAgeInsights,
+    coiffeurAgeInsights,
+    leadActionType
+  )
+
+  const { data: breakdownRow, error: breakdownError } = await supabase
+    .from('appointment_breakdowns')
+    .upsert(breakdownInsert, { onConflict: 'campaign_id' })
+    .select()
+    .single()
+
+  if (breakdownError || !breakdownRow) {
+    throw new Error(
+      `Échec upsert répartition par âge campagne n°${campaignNumber} : ${breakdownError?.message ?? 'réponse vide'}`
+    )
+  }
+
+  return { campaign, audiences: audienceRows, videos: videoRows, appointmentBreakdown: breakdownRow }
 }

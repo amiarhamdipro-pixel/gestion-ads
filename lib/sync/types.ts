@@ -3,7 +3,7 @@
 // (AudienceType, lignes Row/Insert des tables) restent dans types/database.ts
 // et sont importés ici.
 
-import type { Audience, Campaign, Video } from '@/types/database'
+import type { Audience, Campaign, AppointmentBreakdown, Video } from '@/types/database'
 
 export type MetaAction = {
   action_type: string
@@ -29,6 +29,18 @@ export type MetaAdSetInsights = {
 export type MetaAdSetDailyInsight = {
   date_start: string
   date_stop: string
+  spend: string
+  actions?: MetaAction[]
+}
+
+// Une ligne par tranche d'âge Meta (fields=spend,actions, breakdowns=age).
+// Valeurs de `age` réellement observées (vérifié en conditions réelles sur
+// la campagne n°20, voir lib/sync/mapper.ts, mapAgeInsightsToBreakdownInsert) :
+// "18-24", "25-34", "35-44", "45-54", "55-64", "65+", et parfois "Unknown"
+// (leads dont Meta ne peut pas déterminer l'âge — jamais de champ actions
+// dans ce cas, donc jamais de lead compté dessus).
+export type MetaAdSetAgeInsight = {
+  age: string
   spend: string
   actions?: MetaAction[]
 }
@@ -94,6 +106,7 @@ export type SyncCampaignResult = {
   campaign: Campaign
   audiences: Audience[]
   videos: Video[]
+  appointmentBreakdown: AppointmentBreakdown
 }
 
 export type InvalidCampaignGroup = {
