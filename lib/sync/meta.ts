@@ -9,6 +9,8 @@ import type {
   MetaAdSetAgeInsight,
   MetaAdSetDailyInsight,
   MetaAdSetInsights,
+  MetaAdVideoLookup,
+  MetaVideoPicture,
   MetaVideoTitle,
 } from './types'
 
@@ -148,6 +150,73 @@ export async function fetchVideoTitle(videoId: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+// Borne la durée d'un appel POC (voir fetchAdVideoId/fetchVideoThumbnail
+// ci-dessous) : ces deux fonctions sont appelées depuis le rendu serveur de
+// la page Détail campagne (campagne n°20 uniquement), à chaque visite, sans
+// mise en cache — un appel Meta bloqué ne doit jamais geler indéfiniment le
+// chargement de la page. `fallback` (jamais une exception) reste cohérent
+// avec le principe déjà en vigueur (fetchVideoTitle) : la page ne doit
+// jamais échouer à cause de la miniature.
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))])
+}
+
+// POC miniature réelle (campagne n°20 uniquement, voir BRIEF-CLAUDE-CODE.md) :
+// retrouve le video_id Meta d'une pub déjà connue (videos.meta_ad_id stocké
+// en base), sans dépendre d'un nouvel appel /adsets/ads (l'adSetId n'est pas
+// stocké au niveau vidéo). Lecture seule, un seul champ demandé — même
+// principe que fetchVideoTitle ci-dessous : ne lève jamais, null sur tout
+// échec (pub supprimée, permission refusée, pas de vidéo, timeout...).
+export async function fetchAdVideoId(adId: string): Promise<string | null> {
+  return withTimeout(
+    (async () => {
+      try {
+        const ad = await metaApiGet<MetaAdVideoLookup>(adId, { fields: 'creative{object_story_spec}' })
+        return ad.creative?.object_story_spec?.video_data?.video_id ?? null
+      } catch {
+        return null
+      }
+    })(),
+    5000,
+    null
+  )
+}
+
+// POC miniature réelle (campagne n°20 uniquement) : voir MetaVideoPicture
+// (types.ts) pour le détail des champs et de la stabilité des URLs
+// retournées (signées, temporaires — jamais stockées). `format` préféré à
+// `picture` seul (figé ~160×160) ; "720x720" retenu comme bon compromis
+// netteté/poids pour une carte, repli sur "native" puis premier élément
+// disponible, puis `picture`. Ne lève jamais, même principe que
+// fetchVideoTitle.
+export async function fetchVideoThumbnail(videoId: string): Promise<string | null> {
+  return withTimeout(
+    (async () => {
+      try {
+        const video = await metaApiGet<MetaVideoPicture>(videoId, {
+          fields: 'picture,format{picture,width,height,filter}',
+        })
+        const preferred =
+          video.format?.find((f) => f.filter === '720x720') ??
+          video.format?.find((f) => f.filter === 'native') ??
+          video.format?.[0]
+        return preferred?.picture ?? video.picture ?? null
+      } catch {
+        return null
+      }
+    })(),
+    5000,
+    null
+  )
+}
+
+// Combine les deux appels ci-dessus : seule fonction appelée depuis la page
+// (POC campagne n°20 uniquement, voir app/dashboard/campaigns/[id]/page.tsx).
+export async function fetchVideoThumbnailForAd(adId: string): Promise<string | null> {
+  const videoId = await fetchAdVideoId(adId)
+  return videoId ? fetchVideoThumbnail(videoId) : null
 }
 
 export async function fetchAdInsights(adId: string, datePreset = 'maximum'): Promise<MetaAdInsights | null> {

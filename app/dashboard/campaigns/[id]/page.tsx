@@ -15,10 +15,15 @@ import {
   trackingGap,
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
+// POC miniature réelle (campagne n°20 uniquement, voir plus bas) : lecture
+// seule, jamais de synchro/écriture déclenchée depuis cette page.
+import { fetchVideoThumbnailForAd } from '@/lib/sync/meta'
 import KpiCard from '../../KpiCard'
 import PublishToggle from '../../PublishToggle'
+import VideoThumbnail from './VideoThumbnail'
 import {
   amber,
+  facebookBlue,
   faint,
   formatCost,
   formatEur,
@@ -28,6 +33,7 @@ import {
   headerBg,
   indigo,
   ink,
+  instagramMagenta,
   lavender,
   line,
   muted,
@@ -145,6 +151,22 @@ const AUDIENCE_AGE_GENDER_BUCKETS = [
 
 type DonutSegment = { color: string; dasharray: string; dashoffset: number }
 
+// Couleur d'une ligne donnée (donut + légende) : Facebook/Instagram reçoivent
+// toujours leur couleur de marque dédiée (voir format.ts), quel que soit leur
+// rang dans la liste — jamais une couleur de la rotation générique
+// CHANNEL_COLORS pour ces deux-là (avant, elles héritaient d'indigo/violet,
+// deux teintes trop proches pour être distinguées au premier coup d'œil).
+// Tout autre canal réel (Google, Tiktok, MCB, "Non renseigné"...) ou toute
+// autre donnée réutilisant ce même donut (répartition par tranche d'âge)
+// continue de piocher dans CHANNEL_COLORS par position, comportement
+// inchangé.
+function channelColor(label: string, fallbackIndex: number): string {
+  const normalized = label.trim().toLowerCase()
+  if (normalized.startsWith('facebook')) return facebookBlue
+  if (normalized.startsWith('instagram')) return instagramMagenta
+  return CHANNEL_COLORS[fallbackIndex % CHANNEL_COLORS.length]
+}
+
 function donutSegments(rows: ChannelBreakdown[], donutTotal: number, radiusPx: number): DonutSegment[] {
   const circumference = 2 * Math.PI * radiusPx
   let cumulative = 0
@@ -152,7 +174,7 @@ function donutSegments(rows: ChannelBreakdown[], donutTotal: number, radiusPx: n
     const fraction = donutTotal > 0 ? row.count / donutTotal : 0
     const dash = fraction * circumference
     const segment: DonutSegment = {
-      color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+      color: channelColor(row.channel, i),
       dasharray: `${dash} ${Math.max(0, circumference - dash)}`,
       dashoffset: -cumulative,
     }
@@ -315,10 +337,28 @@ export default async function CampaignDetailPage({
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100, hook_rate_pct, retention_rate_pct'
+            'id, audience_id, meta_ad_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100, hook_rate_pct, retention_rate_pct'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
+
+  // POC miniature réelle (campagne n°20 uniquement, voir BRIEF-CLAUDE-CODE.md) :
+  // récupérée en direct depuis Meta à chaque affichage de la page, jamais
+  // persistée en base (URLs Meta signées et temporaires — voir
+  // lib/sync/types.ts, MetaVideoPicture). Aucun impact sur les campagnes
+  // historiques (1 à 19) ni sur les futures campagnes dynamiques (21+) :
+  // strictement gardé par campaign_number === 20, jamais un seuil générique.
+  // videoThumbnails[video.id] === undefined -> non tenté (hors campagne 20) ;
+  // null -> tenté mais échoué/absent ; string -> URL récupérée. Dans les deux
+  // premiers cas, la carte affiche le placeholder existant (VideoThumbnail
+  // n'est monté que si l'URL est une chaîne non vide).
+  const videoThumbnails: Record<string, string | null> = {}
+  if (campaign.campaign_number === 20) {
+    const resolved = await Promise.all(
+      (videos ?? []).map(async (v) => [v.id, await fetchVideoThumbnailForAd(v.meta_ad_id)] as const)
+    )
+    for (const [videoId, url] of resolved) videoThumbnails[videoId] = url
+  }
 
   const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
 
@@ -360,6 +400,10 @@ export default async function CampaignDetailPage({
         .amerys-audience-grid { grid-template-columns: 1fr 1fr; }
         @media (max-width: 640px) {
           .amerys-audience-grid { grid-template-columns: 1fr; }
+        }
+        .amerys-age-gender-grid { grid-template-columns: repeat(4, 1fr); }
+        @media (max-width: 480px) {
+          .amerys-age-gender-grid { grid-template-columns: repeat(2, 1fr); }
         }
       `}</style>
 
@@ -572,7 +616,7 @@ export default async function CampaignDetailPage({
                     width: 10,
                     height: 10,
                     borderRadius: 3,
-                    background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                    background: channelColor(row.channel, i),
                     flexShrink: 0,
                   }}
                 />
@@ -678,7 +722,7 @@ export default async function CampaignDetailPage({
                         width: 10,
                         height: 10,
                         borderRadius: 3,
-                        background: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                        background: channelColor(row.channel, i),
                         flexShrink: 0,
                       }}
                     />
@@ -753,16 +797,35 @@ export default async function CampaignDetailPage({
                     ? retentionRate(video.video_p100, video.video_plays_3s)
                     : null
 
+              // POC campagne n°20 uniquement (voir videoThumbnails plus
+              // haut) : chaîne = URL réelle récupérée, sinon null (hors
+              // campagne 20, échec Meta, ou pas de vidéo) -> placeholder.
+              const thumbnailUrl = video ? (videoThumbnails[video.id] ?? null) : null
+
               return (
                 <div
                   key={audience.id}
                   style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}
                 >
-                  {/* Bannière vidéo : aucune miniature réelle disponible (Meta
-                      ne fournit pas d'URL d'image dans les métriques lues,
-                      et le schéma n'en stocke pas — hors périmètre ici).
-                      Icône Play purement décorative (pas de lecture vidéo
-                      réelle), badge vues et badge Meilleur coût/lead réels. */}
+                  {/* Vignette vidéo : placeholder sobre par défaut (fond
+                      sombre + icône Play, purement décorative, pas de
+                      lecture réelle). POC campagne n°20 (voir
+                      videoThumbnails plus haut, lib/sync/meta.ts) : vraie
+                      miniature Meta affichée par-dessus quand thumbnailUrl
+                      est une URL récupérée avec succès — VideoThumbnail
+                      (Client Component) bascule silencieusement vers rien
+                      (donc ce même placeholder) si l'image échoue à charger
+                      côté navigateur, jamais une image cassée. Prêt pour un
+                      futur champ persistant videos.thumbnail_url (jamais
+                      créé/stocké ici) : il suffira de faire pointer
+                      thumbnailUrl dessus au lieu du fetch Meta en direct,
+                      aucune autre partie de la carte à modifier. Nom vidéo
+                      et audience ne sont volontairement PAS incrustés sur
+                      l'image (texte en dessous à la place) : un nom de
+                      fichier peut être long et une vraie photo,
+                      imprévisible — un texte flottant sur un dégradé ne
+                      garantit pas un contraste correct dans tous les cas,
+                      contrairement à du texte ordinaire sur fond de carte. */}
                   <div
                     style={{
                       position: 'relative',
@@ -775,9 +838,15 @@ export default async function CampaignDetailPage({
                       justifyContent: 'center',
                     }}
                   >
+                    {thumbnailUrl ? (
+                      <VideoThumbnail src={thumbnailUrl} alt={video ? videoDisplayName(video) : ''} />
+                    ) : null}
+                    <PlayIcon
+                      size={40}
+                      style={{ color: video ? onDark : onDarkMuted, position: 'relative', zIndex: 1 }}
+                    />
                     {video ? (
                       <>
-                        <PlayIcon size={40} style={{ color: onDark }} />
                         <span
                           style={{
                             position: 'absolute',
@@ -789,6 +858,7 @@ export default async function CampaignDetailPage({
                             borderRadius: 999,
                             background: 'rgba(0, 0, 0, 0.45)',
                             color: onDark,
+                            zIndex: 1,
                           }}
                         >
                           {video.video_plays.toLocaleString('fr-FR')} vues
@@ -809,58 +879,55 @@ export default async function CampaignDetailPage({
                               // suffisant (~2,5:1) ; ink y reste très lisible
                               // (~7:1).
                               color: ink,
+                              zIndex: 1,
                             }}
                           >
                             Meilleur coût/lead
                           </span>
                         ) : null}
-                        <span
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            padding: '20px 10px 8px',
-                            background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.7))',
-                            color: onDark,
-                          }}
-                        >
-                          {/* Nom vidéo (prioritaire) : voir videoDisplayName
-                              ci-dessus. Nom de la pub Meta conservé visible
-                              mais secondaire (taille/opacité réduites) —
-                              seulement s'il diffère réellement du libellé
-                              principal (sinon doublon visuel : quand
-                              video_display_name est absent, videoDisplayName
-                              retombe déjà sur video.name, les deux lignes
-                              seraient identiques). */}
-                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600 }}>
-                            {videoDisplayName(video)}
-                          </span>
-                          {video.name !== videoDisplayName(video) ? (
-                            <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, opacity: 0.75, marginTop: 2 }}>
-                              {video.name}
-                            </span>
-                          ) : null}
-                        </span>
                       </>
-                    ) : (
-                      <span style={{ color: onDarkMuted, fontSize: 12.5 }}>Aucune vidéo disponible</span>
-                    )}
+                    ) : null}
                   </div>
 
                   <div style={{ marginTop: 12 }}>
-                    <span
-                      style={{
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        padding: '4px 10px',
-                        borderRadius: 999,
-                        background: badgeSoft,
-                        color: badgeColor,
-                      }}
-                    >
-                      {isBarbier ? 'Barbier' : 'Coiffeur'}
-                    </span>
+                    {video ? (
+                      <>
+                        {/* Nom vidéo (prioritaire) : voir videoDisplayName
+                            ci-dessus. Nom de la pub Meta conservé visible
+                            mais secondaire — seulement s'il diffère
+                            réellement du libellé principal (sinon doublon
+                            visuel : quand video_display_name est absent,
+                            videoDisplayName retombe déjà sur video.name, les
+                            deux lignes seraient identiques). Texte normal
+                            (pas incrusté sur l'image) : un nom de fichier
+                            long passe simplement à la ligne, jamais coupé de
+                            façon incompréhensible. */}
+                        <div style={{ fontWeight: 700, fontSize: 14.5, color: ink, wordBreak: 'break-word' }}>
+                          {videoDisplayName(video)}
+                        </div>
+                        {video.name !== videoDisplayName(video) ? (
+                          <div style={{ fontSize: 11, color: muted, marginTop: 2, wordBreak: 'break-word' }}>
+                            {video.name}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 13, color: muted }}>Aucune vidéo disponible</div>
+                    )}
+                    <div style={{ marginTop: 8 }}>
+                      <span
+                        style={{
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          background: badgeSoft,
+                          color: badgeColor,
+                        }}
+                      >
+                        Audience : {isBarbier ? 'Barbier' : 'Coiffeur'}
+                      </span>
+                    </div>
                   </div>
 
                   <div
@@ -894,11 +961,46 @@ export default async function CampaignDetailPage({
                 {/* Répartition des leads par plateforme : donnée de l'import
                     historique Excel uniquement (voir types/database.ts,
                     Audience) — absente (donc masquée) pour toute audience
-                    réellement synchronisée via Meta. */}
+                    réellement synchronisée via Meta. Mêmes couleurs de
+                    marque que le donut/la légende plus haut (facebookBlue/
+                    instagramMagenta, voir format.ts) — texte toujours en
+                    `ink` sur fond softBg() pâle, jamais la teinte brute
+                    comme couleur de texte. */}
                 {audience.facebook_leads !== null || audience.instagram_leads !== null ? (
-                  <p style={{ fontSize: 11.5, color: muted, marginTop: 8, textAlign: 'center' }}>
-                    Facebook : {audience.facebook_leads ?? '—'} · Instagram : {audience.instagram_leads ?? '—'}
-                  </p>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        color: ink,
+                        background: softBg(facebookBlue, 0.12),
+                        borderRadius: 999,
+                        padding: '3px 9px',
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: facebookBlue, flexShrink: 0 }} />
+                      Facebook {audience.facebook_leads ?? '—'}
+                    </span>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        color: ink,
+                        background: softBg(instagramMagenta, 0.12),
+                        borderRadius: 999,
+                        padding: '3px 9px',
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: instagramMagenta, flexShrink: 0 }} />
+                      Instagram {audience.instagram_leads ?? '—'}
+                    </span>
+                  </div>
                 ) : null}
 
                 {/* Répartition des leads par genre x tranche d'âge — import
@@ -921,11 +1023,11 @@ export default async function CampaignDetailPage({
                       Leads par âge et genre
                     </p>
                     <div
+                      className="amerys-age-gender-grid"
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(4, 1fr)',
-                        gap: 4,
-                        fontSize: 11,
+                        gap: 6,
+                        fontSize: 11.5,
                         color: muted,
                         textAlign: 'center',
                       }}

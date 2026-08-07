@@ -73,6 +73,44 @@ export type MetaVideoTitle = {
   title?: string
 }
 
+// POC miniature réelle (campagne n°20 uniquement, voir BRIEF-CLAUDE-CODE.md
+// et lib/sync/meta.ts, fetchAdVideoId) : réponse minimale du node Pub (GET
+// /{ad_id}?fields=creative{object_story_spec}) utilisée pour retrouver le
+// video_id Meta d'une pub déjà connue (videos.meta_ad_id stocké en base),
+// même chemin d'extraction que MetaAd/extractVideoId (lib/sync/mapper.ts)
+// mais sans les champs non demandés ici (name).
+export type MetaAdVideoLookup = {
+  id: string
+  creative?: MetaAdCreative
+}
+
+// POC miniature réelle (campagne n°20 uniquement) : réponse du node Vidéo
+// pour la miniature (GET /{video_id}?fields=picture,format{picture,width,
+// height,filter}). Vérifié en conditions réelles sur les 2 vidéos de la
+// campagne n°20 : `format` expose plusieurs résolutions dérivées de LA MÊME
+// image que `picture` (même fichier de base, seul le paramètre de
+// redimensionnement `stp=` change) — `picture` seul reste figé à une petite
+// taille fixe (~160×160, aucun modificateur de taille `.width()/.height()`
+// n'a d'effet observé sur ce node), donc toujours préféré via `format` pour
+// une carte plus grande (voir lib/sync/meta.ts, fetchVideoThumbnail).
+// `filter` observés : "130x130", "480x480", "720x720", "native" (résolution
+// native de la vidéo, ex. 1080x1920 en portrait). URLs Meta CDN signées et
+// TEMPORAIRES (paramètre `oe=` de l'URL, horodatage Unix hex — décodé en
+// conditions réelles : expiration ≈ 5 jours après génération) — jamais
+// stockées, voir app/dashboard/campaigns/[id]/page.tsx.
+export type MetaVideoFormatEntry = {
+  picture: string
+  width?: number
+  height?: number
+  filter: string
+}
+
+export type MetaVideoPicture = {
+  id: string
+  picture?: string
+  format?: MetaVideoFormatEntry[]
+}
+
 export type MetaActionValue = {
   value: string
 }

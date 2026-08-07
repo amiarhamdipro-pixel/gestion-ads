@@ -34,6 +34,25 @@ export const gray = '#6B7280'
 // surface blanche, tout au vert.
 export const chartOrange = '#C2410C'
 
+// Facebook/Instagram (page Détail campagne) : même principe d'exception
+// justifiée que chartOrange ci-dessus, jamais utilisées comme accent
+// général. Avant cette paire dédiée, Facebook/Instagram héritaient
+// d'indigo/violet (rotation CHANNEL_COLORS générique) — deux teintes
+// bleu/violet trop proches pour être distinguées au premier coup d'œil.
+// Bleu Facebook officiel (#1877F2) et magenta Instagram (#E4405F, teinte
+// plate représentative de la marque, qui utilise en réalité un dégradé) :
+// écart de teinte volontairement large (bleu pur vs rouge-magenta), donc
+// identifiables même en daltonisme rouge-vert (le bleu reste hors de l'axe
+// de confusion protan/deutan). Contraste vérifié à la main (formule WCAG)
+// sur fond blanc : facebookBlue ≈ 4,2:1, instagramMagenta ≈ 4,0:1 —
+// au-dessus du minimum non-textuel (3:1, WCAG 1.4.11). Jamais utilisées
+// comme couleur de texte directe : toujours du texte `ink` sur un fond
+// softBg() pâle, ou un simple repère graphique (point de légende, anneau de
+// donut) — le contraste textuel (AA, 4.5:1) reste garanti par ce même
+// principe déjà appliqué partout ailleurs sur le dashboard.
+export const facebookBlue = '#1877F2'
+export const instagramMagenta = '#E4405F'
+
 // Alias conservés pour les composants existants (mêmes rôles qu'avant,
 // couleurs alignées sur la maquette).
 export const accent = indigo
