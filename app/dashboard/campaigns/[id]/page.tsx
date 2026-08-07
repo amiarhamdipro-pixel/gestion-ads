@@ -38,7 +38,6 @@ import {
   line,
   muted,
   onDark,
-  onDarkMuted,
   radius,
   red,
   softBg,
@@ -46,7 +45,7 @@ import {
   surfaceAlt,
   violet,
 } from '../../format'
-import { CalendarIcon, ClockIcon, DollarIcon, PlayIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
+import { CalendarIcon, ClockIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
 
 function formatPct(n: number | null): string {
   return n === null ? '—' : `${(n * 100).toFixed(1).replace('.', ',')} %`
@@ -823,14 +822,15 @@ export default async function CampaignDetailPage({
                   style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}
                 >
                   {/* Vignette vidéo : placeholder sobre par défaut (fond
-                      sombre + icône Play, purement décorative, pas de
-                      lecture réelle). POC campagne n°20 (voir
-                      videoThumbnails plus haut, lib/sync/meta.ts) : vraie
-                      miniature Meta affichée par-dessus quand thumbnailUrl
-                      est une URL récupérée avec succès — VideoThumbnail
-                      (Client Component) bascule silencieusement vers rien
-                      (donc ce même placeholder) si l'image échoue à charger
-                      côté navigateur, jamais une image cassée. Prêt pour un
+                      sombre uni, jamais cliquable, aucune icône de lecture —
+                      volontairement retirée, voir ci-dessous). POC
+                      campagne n°20 (voir videoThumbnails plus haut,
+                      lib/sync/meta.ts) : vraie miniature Meta affichée
+                      par-dessus quand thumbnailUrl est une URL récupérée
+                      avec succès — VideoThumbnail (Client Component)
+                      bascule silencieusement vers rien (donc ce même
+                      placeholder) si l'image échoue à charger côté
+                      navigateur, jamais une image cassée. Prêt pour un
                       futur champ persistant videos.thumbnail_url (jamais
                       créé/stocké ici) : il suffira de faire pointer
                       thumbnailUrl dessus au lieu du fetch Meta en direct,
@@ -840,7 +840,11 @@ export default async function CampaignDetailPage({
                       fichier peut être long et une vraie photo,
                       imprévisible — un texte flottant sur un dégradé ne
                       garantit pas un contraste correct dans tous les cas,
-                      contrairement à du texte ordinaire sur fond de carte. */}
+                      contrairement à du texte ordinaire sur fond de carte.
+                      Icône ▶️ retirée (recette) : la miniature n'est ni
+                      cliquable ni lisible (aucun lecteur vidéo), l'icône
+                      laissait croire à tort qu'un lecteur était disponible —
+                      ne jamais la réintroduire sans un vrai lecteur derrière. */}
                   <div
                     style={{
                       position: 'relative',
@@ -856,10 +860,6 @@ export default async function CampaignDetailPage({
                     {thumbnailUrl ? (
                       <VideoThumbnail src={thumbnailUrl} alt={video ? videoDisplayName(video) : ''} />
                     ) : null}
-                    <PlayIcon
-                      size={40}
-                      style={{ color: video ? onDark : onDarkMuted, position: 'relative', zIndex: 1 }}
-                    />
                     {video ? (
                       <>
                         <span

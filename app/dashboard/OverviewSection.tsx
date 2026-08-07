@@ -27,7 +27,7 @@ import {
   surfaceAlt,
   radius,
 } from './format'
-import OverviewChart, { type OverviewMode } from './OverviewChart'
+import OverviewChart, { type MonthlyStatRow, type OverviewMode } from './OverviewChart'
 import EndDateEditor from './EndDateEditor'
 import PublishToggle from './PublishToggle'
 
@@ -83,7 +83,15 @@ function LockBadge({ syncLocked }: { syncLocked: boolean }) {
   )
 }
 
-export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Campaign[]; isAdmin: boolean }) {
+export default function OverviewSection({
+  campaigns,
+  dailyStats,
+  isAdmin,
+}: {
+  campaigns: Campaign[]
+  dailyStats: MonthlyStatRow[]
+  isAdmin: boolean
+}) {
   const [mode, setMode] = useState<OverviewMode>('total')
 
   const excludedCount =
@@ -120,7 +128,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
       ) : null}
 
       <div style={{ margin: '0 0 32px' }}>
-        <OverviewChart campaigns={campaigns} mode={mode} onModeChange={setMode} />
+        <OverviewChart campaigns={campaigns} dailyStats={dailyStats} mode={mode} onModeChange={setMode} />
       </div>
 
       <div style={{ marginBottom: 16 }}>

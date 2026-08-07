@@ -2,10 +2,11 @@
 // fait main (pas de dépendance graphique dans le projet). Deux bascules
 // indépendantes :
 // - Par campagne / Par mois (grouping, état interne à ce composant) : une
-//   barre par campagne (comportement historique) ou une barre par mois
-//   civil (somme des campagnes qui commencent ce mois-ci — aucun nouveau
-//   calcul métier, juste un regroupement/somme des mêmes totaux déjà
-//   affichés en mode "Par campagne").
+//   barre par campagne (comportement historique, inchangé) ou une barre par
+//   mois CIVIL — voir buildMonthPoints ci-dessous pour la source réelle
+//   (campaign_daily_stats, jamais le total lifetime d'une campagne rattaché
+//   au mois de sa start_date : c'était le bug corrigé lors de cette tâche,
+//   voir le rapport correspondant pour l'audit chiffré complet).
 // - Totaux / Par jour (mode, prop contrôlée par OverviewSection.tsx, pilote
 //   aussi le tableau des campagnes en dessous) : uniquement pertinente en
 //   grouping="campaign" — une moyenne "par jour" sommée sur plusieurs
@@ -15,8 +16,9 @@
 //   afficher).
 //
 // Campagnes historiques (sync_locked) vs dynamiques : ce composant ne lit
-// jamais sync_locked et ne reçoit même pas ce champ — structurellement,
-// aucune différence de rendu n'est possible entre les deux.
+// jamais sync_locked — la distinction pertinente pour "Par mois" est la
+// PRÉSENCE réelle de lignes campaign_daily_stats (voir dailyStats plus bas),
+// pas un champ de statut.
 
 import { useState } from 'react'
 import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
@@ -27,12 +29,27 @@ export type OverviewMode = 'total' | 'day'
 type Grouping = 'campaign' | 'month'
 
 type ChartCampaign = {
+  id: string
   campaign_number: number
   start_date: string | null
   end_date: string | null
   meta_spend: number
   manual_appointments_adjustment: number
   calendlyAppointments: number
+}
+
+// Ligne brute campaign_daily_stats (voir types/database.ts, CampaignDailyStat)
+// — stat_date dérivée de booking_created_at pour les RDV (lib/sync/
+// syncCalendlyDailyStats.ts) : la seule source permettant un vrai
+// rattachement par mois CIVIL (un RDV pris le 25 juillet compte pour
+// juillet, même si le rendez-vous est prévu en août). Fournie par
+// OverviewSection.tsx (elle-même alimentée par app/dashboard/page.tsx),
+// jamais recalculée ici à partir d'autre chose.
+export type MonthlyStatRow = {
+  campaign_id: string
+  stat_date: string
+  meta_spend: number
+  calendly_appointments: number
 }
 
 // Point générique du graphe : xLabel (ligne du bas, grasse) et xSubLabel
@@ -86,10 +103,13 @@ function niceAxisStep(rawMax: number): number {
   return niceResidual * magnitude
 }
 
-// Regroupement par mois civil de start_date — en chaîne, jamais via Date()
-// (campaigns.start_date est une simple date calendaire "YYYY-MM-DD" ; passer
-// par un objet Date réintroduirait un risque de décalage de fuseau horaire
-// pour rien, alors qu'un découpage de chaîne suffit et reste exact).
+// Mois civil d'une date calendaire "YYYY-MM-DD" — en chaîne, jamais via
+// Date() (stat_date, comme campaigns.start_date, est une simple date
+// calendaire ; passer par un objet Date réintroduirait un risque de
+// décalage de fuseau horaire pour rien, alors qu'un découpage de chaîne
+// suffit et reste exact). Utilisé sur campaign_daily_stats.stat_date (voir
+// buildMonthPoints) — jamais sur start_date d'une campagne (voir le
+// correctif documenté sur buildMonthPoints).
 function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7)
 }
@@ -132,33 +152,56 @@ function buildCampaignPoints(campaigns: ChartCampaign[], mode: OverviewMode): Ch
 
 // Toujours des totaux (jamais "par jour" : sommer une moyenne journalière de
 // plusieurs campagnes distinctes n'aurait pas de sens sans inventer une
-// pondération). Une campagne contribue à un seul mois, celui de son
-// start_date — jamais répartie au prorata sur plusieurs mois (ce serait un
-// nouveau calcul métier, hors périmètre).
-function buildMonthPoints(campaigns: ChartCampaign[]): ChartPoint[] {
-  const buckets = new Map<string, { label: string; appointments: number; spend: number }>()
-  for (const c of campaigns) {
-    if (!c.start_date) continue
-    const key = monthKey(c.start_date)
-    const realCount = realAppointments(c.calendlyAppointments, c.manual_appointments_adjustment)
-    const existing = buckets.get(key)
-    if (existing) {
-      existing.appointments += realCount
-      existing.spend += c.meta_spend
-    } else {
-      buckets.set(key, { label: monthLabel(c.start_date), appointments: realCount, spend: c.meta_spend })
-    }
+// pondération).
+//
+// CORRECTIF DE RECETTE (voir le rapport de tâche pour l'audit chiffré
+// complet) : rattachait auparavant le TOTAL LIFETIME d'une campagne
+// (calendlyAppointments + manual_appointments_adjustment) au seul mois de
+// sa start_date — ex. campagne 19 (start 30/06, 23 RDV réels) comptait
+// entièrement pour juin, alors que 22 de ces 23 RDV avaient réellement été
+// réservés en juillet (booking_created_at). Corrigé pour sommer
+// dailyStats (campaign_daily_stats, stat_date dérivée de booking_created_at
+// — voir MonthlyStatRow ci-dessus) par mois civil réel : un rendez-vous pris
+// le 25 juillet compte pour juillet même si son créneau est prévu en août,
+// conformément à la règle déjà validée pour les campagnes dynamiques.
+// manual_appointments_adjustment est un correctif SANS DATE (voir
+// lib/calculations.ts) : jamais rattaché à un mois précis, donc absent
+// d'ici — même principe que pour une campagne sans aucune ligne
+// campaign_daily_stats (import Excel pur, jamais synchronisée
+// dynamiquement) : ni l'une ni l'autre ne sont réparties arbitrairement,
+// elles sont simplement absentes de ce mode (voir excludedCampaignCount,
+// affiché à l'utilisateur — jamais une donnée silencieusement inventée).
+function buildMonthPoints(
+  campaigns: ChartCampaign[],
+  dailyStats: MonthlyStatRow[]
+): { points: ChartPoint[]; excludedCampaignCount: number } {
+  const buckets = new Map<string, { appointments: number; spend: number }>()
+  for (const row of dailyStats) {
+    const key = monthKey(row.stat_date)
+    const existing = buckets.get(key) ?? { appointments: 0, spend: 0 }
+    existing.appointments += row.calendly_appointments
+    existing.spend += row.meta_spend
+    buckets.set(key, existing)
   }
-  return Array.from(buckets.entries())
+
+  const coveredCampaignIds = new Set(dailyStats.map((row) => row.campaign_id))
+  const excludedCampaignCount = campaigns.filter((c) => !coveredCampaignIds.has(c.id)).length
+
+  const points = Array.from(buckets.entries())
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, v]) => ({
       key,
       appointments: v.appointments,
       spend: v.spend,
-      xLabel: v.label,
+      // monthLabel n'utilise que les positions [2,4) et [5,7) de la chaîne
+      // reçue (année/mois courts) : une clé "YYYY-MM" (7 caractères) donne
+      // exactement le même résultat qu'une date complète "YYYY-MM-DD".
+      xLabel: monthLabel(key),
       xSubLabel: null,
-      tooltipLabel: v.label,
+      tooltipLabel: monthLabel(key),
     }))
+
+  return { points, excludedCampaignCount }
 }
 
 function ToggleGroup<T extends string>({
@@ -241,10 +284,12 @@ function NavButton({
 
 export default function OverviewChart({
   campaigns,
+  dailyStats,
   mode = 'total',
   onModeChange,
 }: {
   campaigns: ChartCampaign[]
+  dailyStats: MonthlyStatRow[]
   mode?: OverviewMode
   onModeChange?: (mode: OverviewMode) => void
 }) {
@@ -252,7 +297,9 @@ export default function OverviewChart({
   const [page, setPage] = useState(0)
 
   const effectiveMode: OverviewMode = grouping === 'month' ? 'total' : mode
-  const allPoints = grouping === 'month' ? buildMonthPoints(campaigns) : buildCampaignPoints(campaigns, effectiveMode)
+  const monthResult = grouping === 'month' ? buildMonthPoints(campaigns, dailyStats) : null
+  const allPoints = monthResult ? monthResult.points : buildCampaignPoints(campaigns, effectiveMode)
+  const excludedFromMonth = monthResult?.excludedCampaignCount ?? 0
 
   // Pagination uniquement en groupement "Par campagne" (voir PAGE_SIZE
   // ci-dessus) : le mode "Par mois" affiche toujours l'intégralité de la
@@ -317,7 +364,9 @@ export default function OverviewChart({
         <div style={{ padding: '28px 0 6px', textAlign: 'center', color: muted, fontSize: 13.5 }}>
           {grouping === 'campaign' && effectiveMode === 'day' && campaigns.length > 0
             ? 'Aucune campagne avec une durée connue (date de fin non renseignée).'
-            : 'Aucune campagne à afficher pour le moment.'}
+            : grouping === 'month' && campaigns.length > 0
+              ? 'Aucune donnée journalière disponible pour le mode Par mois (campagnes jamais synchronisées dynamiquement).'
+              : 'Aucune campagne à afficher pour le moment.'}
         </div>
       </div>
     )
@@ -400,7 +449,16 @@ export default function OverviewChart({
           />
         </div>
       ) : (
-        <p style={{ fontSize: 12.5, color: muted, margin: '4px 0 16px' }}>{monthSubtitle}</p>
+        <div style={{ margin: '4px 0 16px' }}>
+          <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>{monthSubtitle}</p>
+          {excludedFromMonth > 0 ? (
+            <p style={{ fontSize: 11.5, color: muted, margin: '2px 0 0' }}>
+              {excludedFromMonth} campagne{excludedFromMonth > 1 ? 's' : ''} sans détail journalier exclue
+              {excludedFromMonth > 1 ? 's' : ''} de ce mode (jamais synchronisées dynamiquement, aucune granularité
+              mensuelle disponible).
+            </p>
+          ) : null}
+        </div>
       )}
 
       {/* Légende : carré plein = RDV (barres), trait = Dépensé (courbe) —

@@ -318,6 +318,13 @@ export default async function DashboardPage({
     sync_locked: boolean
   }[] = []
   let campaignsError: string | null = null
+  // Granularité réelle par jour/campagne (stat_date dérivée de
+  // booking_created_at pour les RDV, voir lib/sync/syncCalendlyDailyStats.ts) —
+  // seule source utilisée par OverviewChart.tsx pour le groupement "Par mois"
+  // (correctif de recette, voir son en-tête) : jamais recalculée depuis les
+  // totaux campagne ci-dessus, qui restent réservés au groupement "Par
+  // campagne"/Totaux/Par jour, inchangés.
+  let dailyStats: { campaign_id: string; stat_date: string; meta_spend: number; calendly_appointments: number }[] = []
 
   const { data, error } = await supabase
     .from('campaigns')
@@ -355,6 +362,22 @@ export default async function DashboardPage({
     )
 
     campaigns = loaded.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
+
+    if (loaded.length > 0) {
+      const { data: dailyStatsData, error: dailyStatsError } = await supabase
+        .from('campaign_daily_stats')
+        .select('campaign_id, stat_date, meta_spend, calendly_appointments')
+        .eq('client_id', profile.client_id as string)
+        .in(
+          'campaign_id',
+          loaded.map((c) => c.id)
+        )
+      if (dailyStatsError) {
+        logError('api', `client ${profile.client_id}`, `lecture campaign_daily_stats (Par mois) : ${dailyStatsError.message}`)
+      } else {
+        dailyStats = dailyStatsData ?? []
+      }
+    }
   }
 
   const totalSpend = campaigns.reduce((sum, c) => sum + c.meta_spend, 0)
@@ -408,7 +431,7 @@ export default async function DashboardPage({
             />
           </div>
 
-          <OverviewSection campaigns={campaigns} isAdmin={isAdmin} />
+          <OverviewSection campaigns={campaigns} dailyStats={dailyStats} isAdmin={isAdmin} />
         </>
       )}
     </main>

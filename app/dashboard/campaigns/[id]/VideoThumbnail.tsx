@@ -8,8 +8,8 @@ import { useState } from 'react'
 // d'où ce petit Client Component dédié. Si l'image échoue à charger (URL
 // Meta signée expirée entre le rendu serveur et l'affichage, latence
 // réseau...), bascule silencieusement vers rien du tout : le conteneur
-// parent (fond sombre + icône Play, déjà le placeholder existant) reste
-// visible en dessous — jamais une image cassée.
+// parent (fond sombre uni, déjà le placeholder existant) reste visible en
+// dessous — jamais une image cassée. Jamais cliquable, aucun lecteur vidéo.
 export default function VideoThumbnail({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
