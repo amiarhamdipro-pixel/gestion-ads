@@ -20,8 +20,8 @@
 
 import { useState } from 'react'
 import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
-import { chartOrange, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
-import { InfoIcon } from './icons'
+import { chartOrange, faint, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
+import { ChevronDownIcon, InfoIcon } from './icons'
 
 export type OverviewMode = 'total' | 'day'
 type Grouping = 'campaign' | 'month'
@@ -50,11 +50,15 @@ type ChartPoint = {
 // Nombre de points affichés par page. Au-delà, le graphique devient
 // illisible (barres trop fines, libellés qui se chevauchent) — voir aussi le
 // mécanisme de largeur minimale/scroll horizontal plus bas, qui protège la
-// lisibilité mobile pour un nombre de points inférieur à ce seuil. page=0
-// (le plus récent) est la seule valeur utilisée pour l'instant : aucune
-// navigation précédente/suivante n'est câblée ici (hors périmètre), mais
-// pageOfPoints reste déjà paramétrée par page pour qu'une évolution future
-// n'ait qu'à faire varier cette valeur.
+// lisibilité mobile pour un nombre de points inférieur à ce seuil.
+// page=0 = les PAGE_SIZE plus récents ; page croissant = de plus en plus
+// ancien. Découpage par blocs fixes de PAGE_SIZE en partant de la fin du
+// tableau (le plus récent) : chaque campagne appartient à EXACTEMENT une
+// page (jamais perdue, jamais dupliquée entre deux pages adjacentes), y
+// compris la première page (la plus ancienne), qui peut être plus petite
+// que PAGE_SIZE si le total n'est pas un multiple exact (vérifié à la main
+// pour 21 et 25 points). Uniquement appliqué en groupement "Par campagne"
+// (voir plus bas) : le mode "Par mois" affiche toujours la série complète.
 const PAGE_SIZE = 12
 
 function pageOfPoints(allPoints: ChartPoint[], page: number, pageSize: number): ChartPoint[] {
@@ -192,6 +196,49 @@ function ToggleGroup<T extends string>({
   )
 }
 
+// Navigation entre pages de campagnes (voir pageOfPoints ci-dessus). Vrais
+// <button> (accessibilité — jamais un <div> cliquable), taille 36px
+// (utilisable au doigt sur mobile), aria-label explicite plutôt qu'une
+// simple icône décorative. ChevronDownIcon (déjà utilisée ailleurs dans le
+// dashboard, voir icons.tsx) pivotée à 90°/-90° plutôt qu'une nouvelle
+// icône dédiée — aucune dépendance ajoutée.
+function NavButton({
+  direction,
+  disabled,
+  onClick,
+  label,
+}: {
+  direction: 'older' | 'newer'
+  disabled: boolean
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 36,
+        height: 36,
+        flexShrink: 0,
+        borderRadius: 999,
+        border: `1px solid ${lineColor}`,
+        background: surface,
+        color: disabled ? faint : ink,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      <ChevronDownIcon size={16} style={{ transform: direction === 'older' ? 'rotate(90deg)' : 'rotate(-90deg)' }} />
+    </button>
+  )
+}
+
 export default function OverviewChart({
   campaigns,
   mode = 'total',
@@ -202,13 +249,28 @@ export default function OverviewChart({
   onModeChange?: (mode: OverviewMode) => void
 }) {
   const [grouping, setGrouping] = useState<Grouping>('campaign')
+  const [page, setPage] = useState(0)
 
   const effectiveMode: OverviewMode = grouping === 'month' ? 'total' : mode
   const allPoints = grouping === 'month' ? buildMonthPoints(campaigns) : buildCampaignPoints(campaigns, effectiveMode)
 
-  // page=0 : toujours les PAGE_SIZE points les plus récents pour l'instant
-  // (voir commentaire sur PAGE_SIZE ci-dessus).
-  const points = pageOfPoints(allPoints, 0, PAGE_SIZE)
+  // Pagination uniquement en groupement "Par campagne" (voir PAGE_SIZE
+  // ci-dessus) : le mode "Par mois" affiche toujours l'intégralité de la
+  // série, jamais tronquée (le débordement horizontal reste géré par
+  // chartMinWidth/overflow-x plus bas, comme pour n'importe quel nombre de
+  // points). totalPages toujours ≥ 1 pour éviter une division par un total
+  // de pages nul. page n'est volontairement jamais réinitialisée par un
+  // changement de groupement/mode (Par campagne ↔ Par mois, Totaux ↔ Par
+  // jour) : elle est simplement recalée (clampedPage) si le nombre total de
+  // points a changé entre-temps (ex. mode "Par jour", qui exclut les
+  // campagnes sans durée connue) — jamais de page vide ni d'incohérence,
+  // jamais un retour surprise à la première page tant que la page demandée
+  // reste valide.
+  const totalPages = grouping === 'campaign' ? Math.max(1, Math.ceil(allPoints.length / PAGE_SIZE)) : 1
+  const clampedPage = Math.max(0, Math.min(page, totalPages - 1))
+  const points = grouping === 'campaign' ? pageOfPoints(allPoints, clampedPage, PAGE_SIZE) : allPoints
+  const canGoOlder = grouping === 'campaign' && clampedPage < totalPages - 1
+  const canGoNewer = grouping === 'campaign' && clampedPage > 0
 
   const groupingToggle = (
     <ToggleGroup
@@ -310,16 +372,36 @@ export default function OverviewChart({
   const minPxPerPoint = grouping === 'month' ? 58 : 50
   const chartMinWidth = Math.max(width, points.length * minPxPerPoint + marginLeft + marginRight)
 
-  const subtitle =
-    grouping === 'month'
-      ? `Par mois (${points[0].xLabel} à ${points[points.length - 1].xLabel})`
-      : `Par campagne (n° ${points[0].xLabel} à ${points[points.length - 1].xLabel})` +
-        (allPoints.length > points.length ? ` — ${points.length} plus récentes sur ${allPoints.length}` : '')
+  // Groupement "Par mois" : sous-titre simple, jamais de navigation (voir
+  // NavButton — masquée dans ce mode, pas seulement désactivée, la
+  // pagination par campagne n'ayant pas de sens ici). Groupement
+  // "Par campagne" : plage exacte affichée + navigation, format demandé
+  // "Campagnes 10–21 sur 21" (tiret demi-cadratin).
+  const monthSubtitle = `Par mois (${points[0].xLabel} à ${points[points.length - 1].xLabel})`
+  const rangeLabel = `Campagnes ${points[0].xLabel}–${points[points.length - 1].xLabel} sur ${allPoints.length}`
 
   return (
     <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
       {titleRow}
-      <p style={{ fontSize: 12.5, color: muted, margin: '4px 0 16px' }}>{subtitle}</p>
+      {grouping === 'campaign' ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 16px' }}>
+          <NavButton
+            direction="older"
+            disabled={!canGoOlder}
+            onClick={() => setPage(clampedPage + 1)}
+            label="Voir les campagnes précédentes"
+          />
+          <span style={{ fontSize: 12.5, color: muted }}>{rangeLabel}</span>
+          <NavButton
+            direction="newer"
+            disabled={!canGoNewer}
+            onClick={() => setPage(clampedPage - 1)}
+            label="Voir les campagnes suivantes"
+          />
+        </div>
+      ) : (
+        <p style={{ fontSize: 12.5, color: muted, margin: '4px 0 16px' }}>{monthSubtitle}</p>
+      )}
 
       {/* Légende : carré plein = RDV (barres), trait = Dépensé (courbe) —
           couleurs alignées sur celles réellement utilisées ci-dessous. */}
