@@ -57,18 +57,41 @@ export function metaPixelLeadsPerDay(metaPixelLeads: number, durationDays: numbe
   return metaPixelLeads / durationDays
 }
 
-// Taux d'accroche ("Hook Rate") : formule Meta elle-même (vues 3 secondes ÷
-// impressions) — videoPlays3s doit venir de videos.video_plays_3s, dérivé de
-// l'action Meta "video_view" (vérifié en conditions réelles, campagne
-// témoin n°20 : ~15/25 % calculés pour ~18/30 % Meta, écart proportionnel
-// constant sur les deux audiences — cohérent avec une fenêtre de rapport
-// légèrement différente entre l'instantané Meta de référence et cette
-// synchro, pas une erreur de formule). Jamais video_plays
-// (video_play_actions, un décompte différent qui ne reproduit pas les
-// valeurs Meta).
+// Taux d'accroche ("Hook Rate") : vues 3 secondes ÷ impressions. ATTENTION —
+// diagnostic réel (campagne n°20, 2026-08) : cette formule donnait ~15/25 %
+// pour ~18/30 % attendus (écart proportionnel constant sur les deux
+// audiences), hypothèse initiale d'une fenêtre de rapport différente
+// infirmée (mêmes valeurs Meta au niveau ad ET ad set, même date_preset).
+// Cause réelle prouvée : le bon dénominateur Meta pour l'accroche n'est PAS
+// impressions mais video_play_actions (voir hookRateByPlays ci-dessous,
+// la formule correcte pour toute campagne synchronisée via Meta — voir
+// app/dashboard/campaigns/[id]/page.tsx). Cette fonction-ci reste
+// INCHANGÉE (comportement identique à avant) : conservée uniquement pour
+// app/dashboard/comparison/page.tsx (hors périmètre de cette correction,
+// jamais reciblée dessus).
 export function hookRate(videoPlays3s: number, impressions: number): number | null {
   if (impressions <= 0) return null
   return videoPlays3s / impressions
+}
+
+// Taux d'accroche — formule Meta prouvée en conditions réelles (campagne
+// n°20, 2026-08) : vues 3 secondes (videos.video_plays_3s, action Meta
+// "video_view") ÷ vues vidéo (videos.video_plays, action Meta
+// "video_play_actions"), PAS ÷ impressions (voir hookRate ci-dessus).
+// Vérifié sur les deux audiences réelles de la campagne n°20 : Barbier
+// 1340/7387 = 18,14 % (attendu ≈18 %), Coiffeur 11440/39203 = 29,18 %
+// (attendu ≈30 %) — correspondance quasi exacte, contre 14,90 %/25,34 % avec
+// l'ancienne formule. video_plays_3s/video_plays viennent tous deux de la
+// même source (synchro Meta réelle, lib/sync/mapper.ts) quelle que soit la
+// campagne : règle métier valable pour TOUTE campagne dynamique (actuelle ou
+// future), jamais liée à un numéro de campagne précis — voir
+// app/dashboard/campaigns/[id]/page.tsx, qui distingue par type de donnée
+// (Excel figé vs Meta synchronisé), pas par campaign_number. N'affecte
+// jamais retentionRate ci-dessous (dénominateur différent, videoPlays3s —
+// inchangé par cette correction).
+export function hookRateByPlays(videoPlays3s: number, videoPlays: number): number | null {
+  if (videoPlays <= 0) return null
+  return videoPlays3s / videoPlays
 }
 
 // Rétention ("Hold Rate") : formule Meta elle-même (vues 100 % ÷ vues 3

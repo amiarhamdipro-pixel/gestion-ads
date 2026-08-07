@@ -79,6 +79,28 @@ export function extractVideoId(ad: MetaAd): string | null {
   return ad.creative?.object_story_spec?.video_data?.video_id ?? null
 }
 
+// Correctifs manuels ponctuels de titre vidéo Meta — JAMAIS une règle
+// générique (regex/normalize) qui risquerait d'altérer le titre légitime
+// d'une autre vidéo. Diagnostic réel (campagne n°20, audience Barbier,
+// 2026-08) : GET /{video_id}?fields=title renvoie littéralement
+// "video 3 - vide╠üo ciseaux .mp4" (caractères U+2560/U+00FC
+// intercalés + espace parasite avant .mp4) — vérifié en inspectant les
+// octets bruts de la réponse Meta elle-même, donc une corruption réelle et
+// permanente côté Meta (probablement à l'upload du fichier), PAS un bug de
+// décodage dans ce pipeline (JSON est toujours UTF-8, aucune réencodage
+// n'intervient ici) : normalize('NFC'/'NFD') ne change rien, confirmé.
+// Corrigé au cas par cas, par video_id exact, même principe que
+// MANUAL_OVERRIDES (scripts/import-historical-excel.ts) : n'ajouter une
+// entrée qu'après confirmation explicite du nom réel du fichier.
+const KNOWN_VIDEO_TITLE_CORRECTIONS: Record<string, string> = {
+  // Campagne n°20, audience Barbier — nom réel confirmé par le client.
+  '1281121464129222': 'video 3 - video ciseaux.mp4',
+}
+
+export function applyKnownVideoTitleCorrection(videoId: string, title: string | null): string | null {
+  return KNOWN_VIDEO_TITLE_CORRECTIONS[videoId] ?? title
+}
+
 export function mapAdToVideoInsert(
   audienceId: string,
   ad: MetaAd,

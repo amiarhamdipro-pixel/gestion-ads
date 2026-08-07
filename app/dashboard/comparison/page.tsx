@@ -97,7 +97,7 @@ async function computeRankedVideos(
 
   const { data: videoData } = await supabase
     .from('videos')
-    .select('audience_id, name, video_display_name, impressions, video_plays, video_plays_3s, video_p100, hook_rate_pct, retention_rate_pct')
+    .select('audience_id, name, video_display_name, video_plays, video_plays_3s, video_p100, hook_rate_pct, retention_rate_pct')
     .in(
       'audience_id',
       audiences.map((a) => a.id)
@@ -121,7 +121,10 @@ async function computeRankedVideos(
     // pour CE champ ; sinon -> ses compteurs bruts contribuent aux sommes
     // "raw" ci-dessous. Formule finale unique (voir finalizeRate) : jamais
     // de moyenne simple, jamais de source silencieusement privilégiée.
-    rawHookImpressions: number
+    // rawHookPlays (dénominateur Meta, video_plays) — PAS impressions, voir
+    // finalizeHookRate ci-dessous (même règle que
+    // lib/calculations.ts, hookRateByPlays).
+    rawHookPlays: number
     rawHookPlays3s: number
     excelHookWeightedSum: number
     excelHookWeight: number
@@ -151,7 +154,7 @@ async function computeRankedVideos(
         campaignNumbers: new Set<number>(),
         totalSpend: 0,
         totalLeads: 0,
-        rawHookImpressions: 0,
+        rawHookPlays: 0,
         rawHookPlays3s: 0,
         excelHookWeightedSum: 0,
         excelHookWeight: 0,
@@ -176,10 +179,11 @@ async function computeRankedVideos(
       group.excelHookWeightedSum += (video.hook_rate_pct as number) * video.video_plays
       group.excelHookWeight += video.video_plays
     } else {
-      // impressions/video_plays_3s peuvent être null (vidéo historique
-      // jamais synchronisée) : une contribution "inconnue" compte pour 0
-      // dans la SOMME du groupe, jamais inventée.
-      group.rawHookImpressions += video.impressions ?? 0
+      // video_plays_3s peut être null (vidéo historique jamais synchronisée,
+      // sans pct Excel non plus — cas rare) : une contribution "inconnue"
+      // compte pour 0 dans la SOMME du groupe, jamais inventée. video_plays
+      // n'est lui jamais null (voir types/database.ts, Video).
+      group.rawHookPlays += video.video_plays
       group.rawHookPlays3s += video.video_plays_3s ?? 0
     }
 
@@ -195,17 +199,20 @@ async function computeRankedVideos(
 
   // Formule unique pour l'accroche, qu'une occurrence du groupe soit
   // dynamique (compteurs Meta bruts), historique (pct Excel) ou un mélange
-  // des deux : numérateur = Σ(video_plays_3s bruts) + Σ(hook_rate_pct_excel
-  // × video_plays_excel) ; dénominateur = Σ(impressions brutes) +
-  // Σ(video_plays_excel). Cette formule se réduit exactement à
-  // hookRate(Σplays3s, Σimpressions) — la formule déjà utilisée avant cette
-  // tâche — quand toutes les occurrences sont dynamiques (aucun terme
-  // Excel), et à la moyenne pondérée par les vues quand toutes sont
-  // historiques (aucun terme brut) : une seule règle documentée, jamais de
-  // source privilégiée silencieusement en cas de mélange.
+  // des deux — même règle que app/dashboard/campaigns/[id]/page.tsx
+  // (hookRateByPlays, lib/calculations.ts) : numérateur = Σ(video_plays_3s
+  // bruts) + Σ(hook_rate_pct_excel × video_plays_excel) ; dénominateur =
+  // Σ(video_plays bruts) + Σ(video_plays_excel) — JAMAIS impressions
+  // (ancienne formule, abandonnée : ne reproduisait pas les taux Meta réels,
+  // voir lib/calculations.ts, commentaire de hookRate). Cette formule se
+  // réduit exactement à hookRateByPlays(Σplays3s, Σplays) quand toutes les
+  // occurrences sont dynamiques (aucun terme Excel), et à la moyenne
+  // pondérée par les vues quand toutes sont historiques (aucun terme brut) :
+  // une seule règle documentée, jamais de source privilégiée silencieusement
+  // en cas de mélange.
   function finalizeHookRate(g: VideoGroup): number | null {
     const numerator = g.rawHookPlays3s + g.excelHookWeightedSum
-    const denominator = g.rawHookImpressions + g.excelHookWeight
+    const denominator = g.rawHookPlays + g.excelHookWeight
     return denominator > 0 ? numerator / denominator : null
   }
 

@@ -52,7 +52,13 @@ import {
   fetchVideoTitle,
 } from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
-import { extractVideoId, mapAdSetToAudienceInsert, mapAdToVideoInsert, mapAgeInsightsToBreakdownInsert } from './mapper'
+import {
+  applyKnownVideoTitleCorrection,
+  extractVideoId,
+  mapAdSetToAudienceInsert,
+  mapAdToVideoInsert,
+  mapAgeInsightsToBreakdownInsert,
+} from './mapper'
 import type { MetaAd, SyncCampaignParams, SyncCampaignResult } from './types'
 
 function mergeStatus(statusA: string, statusB: string): string {
@@ -84,8 +90,9 @@ async function resolveVideoDisplayName(ad: MetaAd, cache: Map<string, string | n
   if (cache.has(videoId)) return cache.get(videoId) ?? null
 
   const title = await fetchVideoTitle(videoId)
-  cache.set(videoId, title)
-  return title
+  const corrected = applyKnownVideoTitleCorrection(videoId, title)
+  cache.set(videoId, corrected)
+  return corrected
 }
 
 // Journalisation dans sync_runs (schéma existant, non modifié) : une ligne par

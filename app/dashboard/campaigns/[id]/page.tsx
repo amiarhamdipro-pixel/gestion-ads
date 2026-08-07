@@ -5,7 +5,7 @@ import { logError } from '@/lib/logger'
 import {
   campaignDurationDays,
   costPerMetaPixelLead,
-  hookRate,
+  hookRateByPlays,
   isDateRangePreset,
   parisDateFromInstant,
   realAppointments,
@@ -784,11 +784,26 @@ export default async function CampaignDetailPage({
               // video_plays_3s/video_p100, qui restent en base mais ne
               // priment plus visuellement). Sinon -> calcul réel à partir des
               // compteurs bruts s'ils existent. Sinon -> "—" (aucune donnée).
+              // Règle métier (jamais liée à un numéro de campagne précis,
+              // voir lib/calculations.ts, hookRateByPlays) : le type de
+              // DONNÉE détermine la formule, pas l'identité de la campagne.
+              // - Campagne historique verrouillée avec un taux Excel réel
+              //   (campaign.sync_locked && hook_rate_pct non nul) -> ce taux
+              //   Excel reste la référence, inchangé (voir BRIEF-CLAUDE-CODE.md).
+              // - Sinon (données Meta réellement synchronisées, video_plays_3s
+              //   non nul) -> hookRateByPlays (vues 3s ÷ vues vidéo), formule
+              //   Meta prouvée en conditions réelles (campagne n°20 : 18,14 %
+              //   Barbier, 29,18 % Coiffeur) et valable pour N'IMPORTE QUELLE
+              //   campagne synchronisée via Meta, actuelle ou future (21, 22…)
+              //   sans modification de code. hookRate() (ancienne formule,
+              //   ÷ impressions) reste inchangée et n'est plus utilisée ici —
+              //   toujours en vigueur, à l'identique, pour
+              //   app/dashboard/comparison/page.tsx.
               const hook =
                 campaign.sync_locked && video?.hook_rate_pct != null
                   ? video.hook_rate_pct
-                  : video && video.video_plays_3s !== null && video.impressions !== null
-                    ? hookRate(video.video_plays_3s, video.impressions)
+                  : video && video.video_plays_3s !== null
+                    ? hookRateByPlays(video.video_plays_3s, video.video_plays)
                     : null
               const retention =
                 campaign.sync_locked && video?.retention_rate_pct != null
