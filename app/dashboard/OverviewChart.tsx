@@ -5,8 +5,11 @@
 //   barre par campagne (comportement historique, inchangé) ou une barre par
 //   mois CIVIL — voir buildMonthPoints ci-dessous pour la source réelle
 //   (campaign_daily_stats, jamais le total lifetime d'une campagne rattaché
-//   au mois de sa start_date : c'était le bug corrigé lors de cette tâche,
-//   voir le rapport correspondant pour l'audit chiffré complet).
+//   au mois de sa start_date : c'était le bug corrigé lors d'une tâche
+//   précédente, voir le rapport correspondant pour l'audit chiffré complet).
+//   Chaque groupement a sa PROPRE pagination (page/monthPage, états
+//   indépendants — voir plus bas) : naviguer dans un groupement ne modifie
+//   jamais la position mémorisée de l'autre.
 // - Totaux / Par jour (mode, prop contrôlée par OverviewSection.tsx, pilote
 //   aussi le tableau des campagnes en dessous) : uniquement pertinente en
 //   grouping="campaign" — une moyenne "par jour" sommée sur plusieurs
@@ -70,12 +73,14 @@ type ChartPoint = {
 // lisibilité mobile pour un nombre de points inférieur à ce seuil.
 // page=0 = les PAGE_SIZE plus récents ; page croissant = de plus en plus
 // ancien. Découpage par blocs fixes de PAGE_SIZE en partant de la fin du
-// tableau (le plus récent) : chaque campagne appartient à EXACTEMENT une
-// page (jamais perdue, jamais dupliquée entre deux pages adjacentes), y
-// compris la première page (la plus ancienne), qui peut être plus petite
-// que PAGE_SIZE si le total n'est pas un multiple exact (vérifié à la main
-// pour 21 et 25 points). Uniquement appliqué en groupement "Par campagne"
-// (voir plus bas) : le mode "Par mois" affiche toujours la série complète.
+// tableau (le plus récent) : chaque élément (campagne OU mois) appartient à
+// EXACTEMENT une page (jamais perdu, jamais dupliqué entre deux pages
+// adjacentes), y compris la première page (la plus ancienne), qui peut être
+// plus petite que PAGE_SIZE si le total n'est pas un multiple exact (vérifié
+// à la main pour 21 et 25 points). Appliqué aux DEUX groupements ("Par
+// campagne" et "Par mois"), chacun avec son propre état de page (voir
+// page/monthPage dans le composant) — même mécanisme générique
+// (pageOfPoints), jamais dupliqué.
 const PAGE_SIZE = 12
 
 function pageOfPoints(allPoints: ChartPoint[], page: number, pageSize: number): ChartPoint[] {
@@ -239,8 +244,9 @@ function ToggleGroup<T extends string>({
   )
 }
 
-// Navigation entre pages de campagnes (voir pageOfPoints ci-dessus). Vrais
-// <button> (accessibilité — jamais un <div> cliquable), taille 36px
+// Navigation entre pages (campagnes OU mois, voir pageOfPoints ci-dessus —
+// composant générique, réutilisé à l'identique pour les deux groupements).
+// Vrais <button> (accessibilité — jamais un <div> cliquable), taille 36px
 // (utilisable au doigt sur mobile), aria-label explicite plutôt qu'une
 // simple icône décorative. ChevronDownIcon (déjà utilisée ailleurs dans le
 // dashboard, voir icons.tsx) pivotée à 90°/-90° plutôt qu'une nouvelle
@@ -294,30 +300,47 @@ export default function OverviewChart({
   onModeChange?: (mode: OverviewMode) => void
 }) {
   const [grouping, setGrouping] = useState<Grouping>('campaign')
+  // Deux états de page INDÉPENDANTS, un par groupement : naviguer "Par mois"
+  // ne touche jamais page, et inversement — en repassant d'un groupement à
+  // l'autre, chacun retrouve exactement la position où il avait été laissé
+  // (jamais réinitialisé par la bascule elle-même, voir clampedPage/
+  // clampedMonthPage ci-dessous, qui ne font que recaler une page devenue
+  // invalide si le nombre total de points a changé entre-temps).
   const [page, setPage] = useState(0)
+  const [monthPage, setMonthPage] = useState(0)
 
   const effectiveMode: OverviewMode = grouping === 'month' ? 'total' : mode
-  const monthResult = grouping === 'month' ? buildMonthPoints(campaigns, dailyStats) : null
-  const allPoints = monthResult ? monthResult.points : buildCampaignPoints(campaigns, effectiveMode)
-  const excludedFromMonth = monthResult?.excludedCampaignCount ?? 0
+  // Les deux séries sont toujours calculées (coût négligeable — quelques
+  // dizaines de lignes au maximum), jamais seulement celle du groupement
+  // actif : nécessaire pour clamper CORRECTEMENT la pagination de chacune
+  // indépendamment de celle actuellement affichée (voir clampedPage/
+  // clampedMonthPage ci-dessous) — jamais un total de pages calculé sur les
+  // mauvaises données pour le groupement inactif.
+  const campaignPoints = buildCampaignPoints(campaigns, mode)
+  const monthResult = buildMonthPoints(campaigns, dailyStats)
+  const allPoints = grouping === 'month' ? monthResult.points : campaignPoints
+  const excludedFromMonth = monthResult.excludedCampaignCount
 
-  // Pagination uniquement en groupement "Par campagne" (voir PAGE_SIZE
-  // ci-dessus) : le mode "Par mois" affiche toujours l'intégralité de la
-  // série, jamais tronquée (le débordement horizontal reste géré par
-  // chartMinWidth/overflow-x plus bas, comme pour n'importe quel nombre de
-  // points). totalPages toujours ≥ 1 pour éviter une division par un total
-  // de pages nul. page n'est volontairement jamais réinitialisée par un
-  // changement de groupement/mode (Par campagne ↔ Par mois, Totaux ↔ Par
-  // jour) : elle est simplement recalée (clampedPage) si le nombre total de
-  // points a changé entre-temps (ex. mode "Par jour", qui exclut les
-  // campagnes sans durée connue) — jamais de page vide ni d'incohérence,
-  // jamais un retour surprise à la première page tant que la page demandée
-  // reste valide.
-  const totalPages = grouping === 'campaign' ? Math.max(1, Math.ceil(allPoints.length / PAGE_SIZE)) : 1
-  const clampedPage = Math.max(0, Math.min(page, totalPages - 1))
-  const points = grouping === 'campaign' ? pageOfPoints(allPoints, clampedPage, PAGE_SIZE) : allPoints
-  const canGoOlder = grouping === 'campaign' && clampedPage < totalPages - 1
-  const canGoNewer = grouping === 'campaign' && clampedPage > 0
+  // Pagination par blocs de PAGE_SIZE (voir pageOfPoints ci-dessus),
+  // appliquée aux deux groupements avec leur propre état ET leur propre
+  // total de pages. totalPages toujours ≥ 1 pour éviter une division par un
+  // total de pages nul. page=0 = les PAGE_SIZE plus récents (campagnes les
+  // plus élevées, mois les plus récents) — vue initiale demandée pour "Par
+  // mois" ; page croissant = de plus en plus ancien. clampedPage/
+  // clampedMonthPage recalent simplement une page devenue invalide si le
+  // nombre de points de CE groupement a changé entre-temps (ex. mode "Par
+  // jour", qui exclut les campagnes sans durée connue) — jamais de page
+  // vide ni d'incohérence, jamais un retour surprise à la première page
+  // tant que la page demandée reste valide.
+  const campaignTotalPages = Math.max(1, Math.ceil(campaignPoints.length / PAGE_SIZE))
+  const monthTotalPages = Math.max(1, Math.ceil(monthResult.points.length / PAGE_SIZE))
+  const clampedPage = Math.max(0, Math.min(page, campaignTotalPages - 1))
+  const clampedMonthPage = Math.max(0, Math.min(monthPage, monthTotalPages - 1))
+  const totalPages = grouping === 'campaign' ? campaignTotalPages : monthTotalPages
+  const activePage = grouping === 'campaign' ? clampedPage : clampedMonthPage
+  const points = pageOfPoints(allPoints, activePage, PAGE_SIZE)
+  const canGoOlder = activePage < totalPages - 1
+  const canGoNewer = activePage > 0
 
   const groupingToggle = (
     <ToggleGroup
@@ -421,45 +444,43 @@ export default function OverviewChart({
   const minPxPerPoint = grouping === 'month' ? 58 : 50
   const chartMinWidth = Math.max(width, points.length * minPxPerPoint + marginLeft + marginRight)
 
-  // Groupement "Par mois" : sous-titre simple, jamais de navigation (voir
-  // NavButton — masquée dans ce mode, pas seulement désactivée, la
-  // pagination par campagne n'ayant pas de sens ici). Groupement
-  // "Par campagne" : plage exacte affichée + navigation, format demandé
-  // "Campagnes 10–21 sur 21" (tiret demi-cadratin).
-  const monthSubtitle = `Par mois (${points[0].xLabel} à ${points[points.length - 1].xLabel})`
-  const rangeLabel = `Campagnes ${points[0].xLabel}–${points[points.length - 1].xLabel} sur ${allPoints.length}`
+  // Même principe de navigation pour les deux groupements — plage exacte
+  // affichée + navigation gauche/droite, format "Campagnes 10–21 sur 21" /
+  // "Mois 03/26–08/26 sur 18" (tiret demi-cadratin, libellés X déjà au
+  // format demandé : numéro de campagne, ou MM/YY pour un mois — voir
+  // monthLabel). Seul le libellé (campagnes/mois) et l'aria-label des
+  // boutons changent selon grouping ; la mécanique (NavButton, clampedPage/
+  // clampedMonthPage) est rigoureusement la même.
+  const isMonth = grouping === 'month'
+  const rangeLabel = `${isMonth ? 'Mois' : 'Campagnes'} ${points[0].xLabel}–${points[points.length - 1].xLabel} sur ${allPoints.length}`
 
   return (
     <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
       {titleRow}
-      {grouping === 'campaign' ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 16px' }}>
+      <div style={{ margin: '8px 0 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <NavButton
             direction="older"
             disabled={!canGoOlder}
-            onClick={() => setPage(clampedPage + 1)}
-            label="Voir les campagnes précédentes"
+            onClick={() => (isMonth ? setMonthPage(clampedMonthPage + 1) : setPage(clampedPage + 1))}
+            label={isMonth ? 'Voir les mois précédents' : 'Voir les campagnes précédentes'}
           />
           <span style={{ fontSize: 12.5, color: muted }}>{rangeLabel}</span>
           <NavButton
             direction="newer"
             disabled={!canGoNewer}
-            onClick={() => setPage(clampedPage - 1)}
-            label="Voir les campagnes suivantes"
+            onClick={() => (isMonth ? setMonthPage(clampedMonthPage - 1) : setPage(clampedPage - 1))}
+            label={isMonth ? 'Voir les mois suivants' : 'Voir les campagnes suivantes'}
           />
         </div>
-      ) : (
-        <div style={{ margin: '4px 0 16px' }}>
-          <p style={{ fontSize: 12.5, color: muted, margin: 0 }}>{monthSubtitle}</p>
-          {excludedFromMonth > 0 ? (
-            <p style={{ fontSize: 11.5, color: muted, margin: '2px 0 0' }}>
-              {excludedFromMonth} campagne{excludedFromMonth > 1 ? 's' : ''} sans détail journalier exclue
-              {excludedFromMonth > 1 ? 's' : ''} de ce mode (jamais synchronisées dynamiquement, aucune granularité
-              mensuelle disponible).
-            </p>
-          ) : null}
-        </div>
-      )}
+        {isMonth && excludedFromMonth > 0 ? (
+          <p style={{ fontSize: 11.5, color: muted, margin: '6px 0 0' }}>
+            {excludedFromMonth} campagne{excludedFromMonth > 1 ? 's' : ''} sans détail journalier exclue
+            {excludedFromMonth > 1 ? 's' : ''} de ce mode (jamais synchronisées dynamiquement, aucune granularité
+            mensuelle disponible).
+          </p>
+        ) : null}
+      </div>
 
       {/* Légende : carré plein = RDV (barres), trait = Dépensé (courbe) —
           couleurs alignées sur celles réellement utilisées ci-dessous. */}
