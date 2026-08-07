@@ -113,6 +113,16 @@ export type Video = {
   // Jamais renseignés par la synchro Meta réelle.
   hook_rate_pct: number | null
   retention_rate_pct: number | null
+  // URL publique durable de la miniature (Supabase Storage, bucket
+  // video-thumbnails) — JAMAIS une URL Meta signée/temporaire (voir
+  // lib/sync/meta.ts, fetchVideoThumbnail : celle-ci expire en quelques
+  // jours et n'est jamais stockée). Renseignée par la synchro
+  // (lib/sync/syncCampaign.ts) : Meta -> téléchargement serveur -> upload
+  // Storage -> URL publique écrite ici. NULL tant que non résolue (pas de
+  // video_id, pas de miniature Meta, échec réseau/upload — jamais une
+  // erreur de synchro) ou pour toute campagne hors du périmètre du POC
+  // (uniquement la campagne n°20 pour le moment, voir BRIEF-CLAUDE-CODE.md).
+  thumbnail_url: string | null
   created_at: string
   updated_at: string
 }
@@ -291,9 +301,15 @@ export interface Database {
         Row: Video
         // hook_rate_pct/retention_rate_pct optionnels à l'insert : seul
         // l'import historique Excel les renseigne (même raison que
-        // facebook_leads/instagram_leads ci-dessus).
-        Insert: Partial<Pick<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct'>> &
-          Omit<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct'>
+        // facebook_leads/instagram_leads ci-dessus). thumbnail_url
+        // optionnel de la même façon : seul le POC miniature durable
+        // (campagne n°20 uniquement, voir lib/sync/syncCampaign.ts) le
+        // renseigne — mapAdToVideoInsert (lib/sync/mapper.ts, utilisée par
+        // toute campagne) l'omet, défaut colonne NULL préservé.
+        Insert: Partial<
+          Pick<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct' | 'thumbnail_url'>
+        > &
+          Omit<Video, 'id' | 'created_at' | 'updated_at' | 'hook_rate_pct' | 'retention_rate_pct' | 'thumbnail_url'>
         Update: Partial<Video>
         Relationships: []
       }

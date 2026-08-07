@@ -15,9 +15,6 @@ import {
   trackingGap,
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
-// POC miniature réelle (campagne n°20 uniquement, voir plus bas) : lecture
-// seule, jamais de synchro/écriture déclenchée depuis cette page.
-import { fetchVideoThumbnailForAd } from '@/lib/sync/meta'
 import KpiCard from '../../KpiCard'
 import PublishToggle from '../../PublishToggle'
 import VideoThumbnail from './VideoThumbnail'
@@ -331,33 +328,20 @@ export default async function CampaignDetailPage({
   const ageBreakdown = buildAgeBreakdown(ageBreakdownRow)
   const ageBreakdownTotal = ageBreakdown.reduce((sum, row) => sum + row.count, 0)
 
+  // thumbnail_url : URL Supabase Storage durable (bucket "video-thumbnails"),
+  // écrite par la synchro (lib/sync/syncCampaign.ts, POC campagne n°20
+  // uniquement — voir BRIEF-CLAUDE-CODE.md). Jamais d'appel Meta depuis
+  // cette page : la miniature est déjà là ou ne l'est pas, aucune
+  // récupération à la volée.
   const { data: videos } =
     audienceIds.length > 0
       ? await supabase
           .from('videos')
           .select(
-            'id, audience_id, meta_ad_id, name, video_display_name, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100, hook_rate_pct, retention_rate_pct'
+            'id, audience_id, meta_ad_id, name, video_display_name, thumbnail_url, impressions, video_plays, video_plays_3s, average_watch_time_seconds, video_p25, video_p50, video_p75, video_p100, hook_rate_pct, retention_rate_pct'
           )
           .in('audience_id', audienceIds)
       : { data: [] }
-
-  // POC miniature réelle (campagne n°20 uniquement, voir BRIEF-CLAUDE-CODE.md) :
-  // récupérée en direct depuis Meta à chaque affichage de la page, jamais
-  // persistée en base (URLs Meta signées et temporaires — voir
-  // lib/sync/types.ts, MetaVideoPicture). Aucun impact sur les campagnes
-  // historiques (1 à 19) ni sur les futures campagnes dynamiques (21+) :
-  // strictement gardé par campaign_number === 20, jamais un seuil générique.
-  // videoThumbnails[video.id] === undefined -> non tenté (hors campagne 20) ;
-  // null -> tenté mais échoué/absent ; string -> URL récupérée. Dans les deux
-  // premiers cas, la carte affiche le placeholder existant (VideoThumbnail
-  // n'est monté que si l'URL est une chaîne non vide).
-  const videoThumbnails: Record<string, string | null> = {}
-  if (campaign.campaign_number === 20) {
-    const resolved = await Promise.all(
-      (videos ?? []).map(async (v) => [v.id, await fetchVideoThumbnailForAd(v.meta_ad_id)] as const)
-    )
-    for (const [videoId, url] of resolved) videoThumbnails[videoId] = url
-  }
 
   const duration = campaignDurationDays(campaign.start_date, campaign.end_date)
 
@@ -811,10 +795,13 @@ export default async function CampaignDetailPage({
                     ? retentionRate(video.video_p100, video.video_plays_3s)
                     : null
 
-              // POC campagne n°20 uniquement (voir videoThumbnails plus
-              // haut) : chaîne = URL réelle récupérée, sinon null (hors
-              // campagne 20, échec Meta, ou pas de vidéo) -> placeholder.
-              const thumbnailUrl = video ? (videoThumbnails[video.id] ?? null) : null
+              // Miniature durable (Supabase Storage) : lue directement sur la
+              // ligne vidéo, jamais recalculée ni récupérée depuis Meta ici
+              // (voir videos.thumbnail_url, écrite par lib/sync/syncCampaign.ts —
+              // POC campagne n°20 uniquement pour le moment). null pour toute
+              // vidéo hors de ce périmètre, ou dont la miniature n'a pas
+              // encore été résolue -> placeholder existant.
+              const thumbnailUrl = video?.thumbnail_url ?? null
 
               return (
                 <div
@@ -823,28 +810,24 @@ export default async function CampaignDetailPage({
                 >
                   {/* Vignette vidéo : placeholder sobre par défaut (fond
                       sombre uni, jamais cliquable, aucune icône de lecture —
-                      volontairement retirée, voir ci-dessous). POC
-                      campagne n°20 (voir videoThumbnails plus haut,
-                      lib/sync/meta.ts) : vraie miniature Meta affichée
-                      par-dessus quand thumbnailUrl est une URL récupérée
-                      avec succès — VideoThumbnail (Client Component)
-                      bascule silencieusement vers rien (donc ce même
-                      placeholder) si l'image échoue à charger côté
-                      navigateur, jamais une image cassée. Prêt pour un
-                      futur champ persistant videos.thumbnail_url (jamais
-                      créé/stocké ici) : il suffira de faire pointer
-                      thumbnailUrl dessus au lieu du fetch Meta en direct,
-                      aucune autre partie de la carte à modifier. Nom vidéo
-                      et audience ne sont volontairement PAS incrustés sur
-                      l'image (texte en dessous à la place) : un nom de
-                      fichier peut être long et une vraie photo,
-                      imprévisible — un texte flottant sur un dégradé ne
-                      garantit pas un contraste correct dans tous les cas,
-                      contrairement à du texte ordinaire sur fond de carte.
-                      Icône ▶️ retirée (recette) : la miniature n'est ni
-                      cliquable ni lisible (aucun lecteur vidéo), l'icône
-                      laissait croire à tort qu'un lecteur était disponible —
-                      ne jamais la réintroduire sans un vrai lecteur derrière. */}
+                      volontairement retirée, voir ci-dessous). Miniature
+                      réelle affichée par-dessus quand videos.thumbnail_url
+                      est renseignée (Supabase Storage, durable — jamais une
+                      URL Meta temporaire, voir lib/sync/syncCampaign.ts) —
+                      VideoThumbnail (Client Component) bascule
+                      silencieusement vers rien (donc ce même placeholder) si
+                      l'image échoue à charger côté navigateur, jamais une
+                      image cassée. Nom vidéo et audience ne sont
+                      volontairement PAS incrustés sur l'image (texte en
+                      dessous à la place) : un nom de fichier peut être long
+                      et une vraie photo, imprévisible — un texte flottant
+                      sur un dégradé ne garantit pas un contraste correct
+                      dans tous les cas, contrairement à du texte ordinaire
+                      sur fond de carte. Icône ▶️ retirée (recette) : la
+                      miniature n'est ni cliquable ni lisible (aucun lecteur
+                      vidéo), l'icône laissait croire à tort qu'un lecteur
+                      était disponible — ne jamais la réintroduire sans un
+                      vrai lecteur derrière. */}
                   <div
                     style={{
                       position: 'relative',

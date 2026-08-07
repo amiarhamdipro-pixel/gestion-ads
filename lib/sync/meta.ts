@@ -255,11 +255,42 @@ export async function fetchVideoThumbnail(videoId: string): Promise<string | nul
   )
 }
 
-// Combine les deux appels ci-dessus : seule fonction appelée depuis la page
-// (POC campagne n°20 uniquement, voir app/dashboard/campaigns/[id]/page.tsx).
+// Combine les deux appels ci-dessus : retourne l'URL Meta temporaire d'une
+// pub (via son video_id). Appelée uniquement depuis la synchro (POC
+// campagne n°20 uniquement, voir lib/sync/syncCampaign.ts) — cette URL
+// n'est JAMAIS stockée telle quelle ni exposée au front (voir
+// downloadVideoThumbnailImage ci-dessous, qui la consomme immédiatement
+// pour produire des octets à uploader vers un stockage durable).
 export async function fetchVideoThumbnailForAd(adId: string): Promise<string | null> {
   const videoId = await fetchAdVideoId(adId)
   return videoId ? fetchVideoThumbnail(videoId) : null
+}
+
+// Télécharge les octets de l'image pointée par une URL de miniature Meta
+// temporaire (voir fetchVideoThumbnail ci-dessus) — dernière étape avant
+// upload vers Supabase Storage (voir lib/sync/thumbnailStorage.ts). Pas un
+// appel Graph API (pas de access_token nécessaire : les URLs de miniatures
+// Meta sont des liens CDN pré-signés, directement accessibles). Ne lève
+// jamais, même principe que les autres fonctions de ce fichier : réponse
+// non-2xx, timeout ou contenu non-image -> null, jamais une exception qui
+// ferait échouer syncCampaign pour un problème de miniature.
+export async function downloadVideoThumbnailImage(url: string): Promise<Buffer | null> {
+  return withTimeout(
+    (async () => {
+      try {
+        const response = await fetch(url)
+        if (!response.ok) return null
+        const contentType = response.headers.get('content-type') ?? ''
+        if (!contentType.startsWith('image/')) return null
+        const arrayBuffer = await response.arrayBuffer()
+        return Buffer.from(arrayBuffer)
+      } catch {
+        return null
+      }
+    })(),
+    8000,
+    null
+  )
 }
 
 export async function fetchAdInsights(adId: string, datePreset = 'maximum'): Promise<MetaAdInsights | null> {

@@ -43,6 +43,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logError } from '@/lib/logger'
 import {
+  downloadVideoThumbnailImage,
   fetchAdInsights,
   fetchAdSetAds,
   fetchAdSetAgeGenderInsights,
@@ -51,6 +52,7 @@ import {
   fetchAdSetInsights,
   fetchAdSetPlatformInsights,
   fetchCampaignAdSets,
+  fetchVideoThumbnail,
   fetchVideoTitle,
 } from './meta'
 import { groupByCampaignNumber } from './groupByCampaign'
@@ -63,6 +65,7 @@ import {
   mapAgeInsightsToBreakdownInsert,
   mapPlatformInsightsToAudienceFields,
 } from './mapper'
+import { uploadVideoThumbnail } from './thumbnailStorage'
 import type { MetaAd, SyncCampaignParams, SyncCampaignResult } from './types'
 
 function mergeStatus(statusA: string, statusB: string): string {
@@ -97,6 +100,39 @@ async function resolveVideoDisplayName(ad: MetaAd, cache: Map<string, string | n
   const corrected = applyKnownVideoTitleCorrection(videoId, title)
   cache.set(videoId, corrected)
   return corrected
+}
+
+// POC miniature DURABLE (campagne n°20 UNIQUEMENT — garde-fou explicite au
+// seul point d'appel, voir plus bas) : Meta (image temporaire, 720x720
+// préféré — voir lib/sync/meta.ts, fetchVideoThumbnail) -> téléchargement
+// serveur -> Supabase Storage (bucket "video-thumbnails") -> URL publique
+// durable retournée. Remplace l'ancien POC (fetch Meta à la volée à chaque
+// affichage de page, URL signée temporaire jamais stockée) : ici, la
+// synchro fait le travail une fois, et le front n'appelle plus jamais Meta
+// (voir app/dashboard/campaigns/[id]/page.tsx). Ne lève jamais : chaque
+// étage (fetchVideoThumbnail, downloadVideoThumbnailImage, uploadVideoThumbnail)
+// ne lève déjà jamais lui-même — null à la moindre étape manquante ou en
+// échec (pas de miniature Meta, timeout, téléchargement impossible, upload
+// Storage impossible), jamais une exception qui ferait échouer syncCampaign
+// pour un problème de miniature. Le token Meta n'apparaît jamais dans le
+// résultat ni dans un journal : l'URL Meta temporaire est consommée
+// immédiatement en mémoire, jamais journalisée ni retournée telle quelle.
+async function resolveDurableThumbnailUrl(
+  supabase: ReturnType<typeof createAdminClient>,
+  params: { clientId: string; campaignNumber: number; videoId: string }
+): Promise<string | null> {
+  const temporaryUrl = await fetchVideoThumbnail(params.videoId)
+  if (!temporaryUrl) return null
+
+  const imageBuffer = await downloadVideoThumbnailImage(temporaryUrl)
+  if (!imageBuffer) return null
+
+  return uploadVideoThumbnail(supabase, {
+    clientId: params.clientId,
+    campaignNumber: params.campaignNumber,
+    videoId: params.videoId,
+    imageBuffer,
+  })
 }
 
 // Journalisation dans sync_runs (schéma existant, non modifié) : une ligne par
@@ -299,7 +335,26 @@ async function runSync(
     for (const ad of ads) {
       const adInsights = await fetchAdInsights(ad.id)
       const videoDisplayName = await resolveVideoDisplayName(ad, videoTitleCache)
-      videoInserts.push(mapAdToVideoInsert(audienceRow.id, ad, adInsights, videoDisplayName))
+
+      // POC miniature durable : UNIQUEMENT campagne n°20 (garde-fou
+      // explicite, voir BRIEF-CLAUDE-CODE.md) — jamais 1 à 19, jamais 21+,
+      // aucun appel Meta/Storage supplémentaire pour toute autre campagne.
+      // extractVideoId(ad) est pur (aucun appel réseau, lit
+      // ad.creative déjà récupéré par fetchAdSetAds ci-dessus).
+      const videoId = extractVideoId(ad)
+      const thumbnailUrl =
+        campaignNumber === 20 && videoId
+          ? await resolveDurableThumbnailUrl(supabase, { clientId, campaignNumber, videoId })
+          : null
+
+      videoInserts.push({
+        ...mapAdToVideoInsert(audienceRow.id, ad, adInsights, videoDisplayName),
+        // Omis (jamais thumbnail_url: null) si non résolue cette fois :
+        // préserve une valeur déjà valide en base au lieu de l'écraser à
+        // cause d'un échec Meta/Storage temporaire — même principe déjà
+        // établi pour published/sync_locked (voir l'en-tête de ce fichier).
+        ...(thumbnailUrl ? { thumbnail_url: thumbnailUrl } : {}),
+      })
     }
   }
 
