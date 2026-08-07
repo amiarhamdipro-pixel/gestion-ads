@@ -905,6 +905,73 @@ code a changé depuis) :
     null` (toutes verrouillées, simulé) -> résultat vide propre, aucune
     écriture.
 
+- **Correctif du lien de réinitialisation de mot de passe redirigeant vers
+  `0.0.0.0:3000` (ERR_ADDRESS_INVALID)** (`lib/site.ts`,
+  `app/auth/confirm/route.ts`, `app/update-password/page.tsx`, `README.md`) :
+  cause racine identifiée en deux temps, jamais dans le code applicatif lui-
+  même (aucune occurrence codée en dur de `0.0.0.0`, `NEXT_PUBLIC_SITE_URL`
+  absente du `.env` local retombe déjà correctement sur
+  `http://localhost:3000`, voir `lib/site.ts`).
+  - **Cause racine principale (configuration Supabase, hors dépôt)** : le
+    **Site URL** du projet Supabase (Dashboard → Authentication → URL
+    Configuration) sert de repli quand le `redirectTo` envoyé par
+    `resetPasswordForEmail` n'est pas dans la liste **Redirect URLs**
+    autorisée (comportement Supabase documenté, confirmé en conditions
+    réelles pour ce projet — voir `app/login/RecoveryHashHandler.tsx`, qui
+    documente déjà que le lien atterrit sur l'origine du site avant de
+    rediriger côté serveur vers `/login`). Si ce Site URL vaut une adresse
+    d'écoute type `0.0.0.0` plutôt qu'une adresse navigable, le lien envoyé
+    par e-mail — et donc toute redirection qui en dérive — pointe vers une
+    adresse que Chrome refuse d'ouvrir (`ERR_ADDRESS_INVALID`). **Vérifié en
+    conditions réelles** (compte de test jetable, `auth.admin.generateLink`,
+    jamais d'e-mail réellement envoyé, jamais de jeton journalisé) : au
+    moment de cette tâche, le Site URL est correctement
+    `https://ads.amerys-agency.com` (pas `0.0.0.0`) — mais le `redirectTo`
+    local (`http://localhost:3000/auth/confirm?next=/update-password`)
+    **n'est pas dans les Redirect URLs autorisées**, donc Supabase substitue
+    silencieusement le domaine de production même pour un test lancé en
+    local : un reset demandé en local renvoie aujourd'hui vers
+    `https://ads.amerys-agency.com`, pas vers `localhost`. **Action requise
+    côté Dashboard, pas dans ce dépôt** : ajouter
+    `http://localhost:3000/**` aux Redirect URLs (garder le Site URL de
+    production tel quel) — voir `README.md`, section Déploiement, mise à
+    jour avec les valeurs exactes attendues. Le `0.0.0.0` initialement
+    signalé était très probablement une valeur transitoire du Site URL
+    (depuis corrigée côté Dashboard, indépendamment de cette tâche) ; les
+    garde-fous ci-dessous empêchent sa réapparition quelle que soit la
+    cause.
+  - **Garde-fou ajouté côté code** (`lib/site.ts`) : si
+    `NEXT_PUBLIC_SITE_URL` contient malgré tout `0.0.0.0` (erreur classique :
+    copiée depuis le message `Local: http://0.0.0.0:3000` affiché par
+    `next dev`), la valeur est ignorée et remplacée par
+    `http://localhost:3000` — jamais propagée dans un lien d'e-mail.
+  - **Bug latent corrigé** (`app/auth/confirm/route.ts`) : les redirections
+    de cette route utilisaient `origin` déduit de `request.url` (l'hôte sur
+    lequel la requête a été REÇUE) au lieu de `SITE_URL` — contraire au
+    principe déjà documenté dans `lib/site.ts` ("jamais déduite d'un en-tête
+    Host côté serveur, non fiable derrière un proxy mal configuré"). Si
+    cette route est un jour effectivement atteinte (format `?code=`, PKCE),
+    elle reflétait fidèlement n'importe quel hôte reçu — y compris
+    `0.0.0.0` — dans sa propre redirection vers `/login?error=...`,
+    exactement le symptôme observé. Corrigé pour utiliser `SITE_URL`,
+    cohérent avec `app/forgot-password/actions.ts` et
+    `app/dashboard/admin/users/actions.ts` (même construction de
+    `redirectTo`).
+  - **Confirmé sans régression** : le format actuellement délivré par ce
+    projet Supabase pour la réinitialisation reste le fragment `#access_
+    token=...&type=recovery` (implicite), traité par
+    `app/login/RecoveryHashHandler.tsx` — composant non modifié, toujours
+    responsable du chemin réellement emprunté. Commentaire de
+    `app/update-password/page.tsx` corrigé (il attribuait à tort
+    l'établissement de session exclusivement à `auth/confirm/route.ts`).
+    Script de vérification jetable (compte de test créé puis supprimé,
+    `auth.admin.generateLink`) : confirme `SITE_URL` = `http://localhost:3000`
+    en local (jamais `0.0.0.0`), garde-fou actif, et le `redirect_to` réel
+    retenu par Supabase — aucune trace laissée en base.
+  - **Aucun secret ni jeton journalisé** : `error.message` déjà filtré par
+    `lib/logger.ts` (masquage des adresses e-mail) avant toute
+    journalisation — non modifié, vérifié toujours en vigueur sur ce chemin.
+
 ## 6. Tâche immédiate
 
 1. **Audit** du dossier : confirme la présence de `meta-test.mjs`, la version de

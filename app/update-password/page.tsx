@@ -3,9 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import AuthShell from '@/app/AuthShell'
 import UpdatePasswordForm from './UpdatePasswordForm'
 
-// Accessible uniquement avec une session active (établie par
-// app/auth/confirm/route.ts depuis le lien reçu par e-mail) — même garde
-// que le reste de l'app (auth.getUser() + redirect si absent).
+// Accessible uniquement avec une session active — établie soit par
+// app/login/RecoveryHashHandler.tsx (jetons dans le fragment d'URL, format
+// actuellement délivré par ce projet Supabase pour la réinitialisation),
+// soit par app/auth/confirm/route.ts (format `?code=`, si jamais utilisé) —
+// même garde que le reste de l'app (auth.getUser() + redirect si absent).
 export default async function UpdatePasswordPage({
   searchParams,
 }: {

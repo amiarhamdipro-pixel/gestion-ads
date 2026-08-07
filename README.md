@@ -86,6 +86,13 @@ CALENDLY_ACQUISITION_CHANNEL_QUESTION=   # optionnel, texte de la question si re
 
 # Site
 NEXT_PUBLIC_SITE_URL=         # URL publique (production : https://ads.amerys-agency.com)
+                               # En local : à laisser vide (repli automatique sur
+                               # http://localhost:3000, voir lib/site.ts) — ne
+                               # JAMAIS y mettre http://0.0.0.0:3000 (adresse
+                               # d'écoute serveur affichée par `next dev`, pas une
+                               # adresse de destination valide pour un navigateur ;
+                               # produit ERR_ADDRESS_INVALID sur le lien de
+                               # réinitialisation de mot de passe reçu par e-mail).
 ```
 
 `.env` n'est **jamais commité** (ignoré par `.gitignore`). Sans les variables
@@ -205,9 +212,16 @@ Stack cible : **Next.js (Vercel) + Supabase**.
 1. Renseigner toutes les variables d'environnement (voir ci-dessus) dans les
    *Environment Variables* du projet Vercel — `NEXT_PUBLIC_SITE_URL` doit
    pointer vers le domaine de production (`https://ads.amerys-agency.com`).
-2. Dans *Supabase → Authentication → URL Configuration*, ajouter ce domaine
-   (et l'URL locale pour le développement) aux **Redirect URLs** autorisées —
-   requis pour que le lien de réinitialisation de mot de passe fonctionne.
+2. Dans *Supabase → Authentication → URL Configuration* :
+   - **Site URL** : `https://ads.amerys-agency.com` (jamais une adresse
+     d'écoute type `0.0.0.0` — Supabase l'utilise comme repli pour construire
+     le lien envoyé par e-mail quand `redirectTo` n'est pas dans la liste
+     ci-dessous, donc une valeur invalide y casse le lien même si le code
+     applicatif est correct).
+   - **Redirect URLs** : ajouter `https://ads.amerys-agency.com/**` (production)
+     et `http://localhost:3000/**` (développement local) — requis pour que le
+     lien de réinitialisation de mot de passe fonctionne dans les deux
+     environnements.
 3. Appliquer les migrations sur le projet Supabase de production
    (`npx supabase db push --linked`, voir ci-dessus) avant la mise en ligne.
 4. Déployer (`vercel --prod` ou via l'intégration Git de Vercel). Le build
