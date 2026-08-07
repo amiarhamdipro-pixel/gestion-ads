@@ -41,8 +41,6 @@ type Campaign = {
   meta_pixel_leads: number
   manual_appointments_adjustment: number
   calendlyAppointments: number
-  facebook: number
-  instagram: number
   sync_locked: boolean
 }
 
@@ -133,7 +131,7 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
           sécurité (overflow-x: auto) si jamais l'espace disponible est serré. */}
       <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isAdmin ? 860 : 760 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isAdmin ? 720 : 620 }}>
             <thead>
               <tr>
                 {[
@@ -143,8 +141,6 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                   mode === 'day' ? 'Dépensé / j' : 'Dépensé',
                   mode === 'day' ? 'RDV / j' : 'Rendez-vous',
                   'Coût / RDV réel',
-                  'Facebook',
-                  'Instagram',
                   ...(isAdmin ? ['Tracking'] : []),
                 ].map((label, i) => (
                   <th
@@ -213,8 +209,6 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                   <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {formatCost(costPerAppt)}
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>{campaign.facebook}</td>
-                  <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>{campaign.instagram}</td>
                   {isAdmin ? (
                     <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                       {tone ? (
@@ -291,21 +285,6 @@ export default function OverviewSection({ campaigns, isAdmin }: { campaigns: Cam
                 </div>
               </div>
             )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-              <div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
-                  Facebook
-                </div>
-                <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{campaign.facebook}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
-                  Instagram
-                </div>
-                <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{campaign.instagram}</div>
-              </div>
-            </div>
 
             <div
               style={{

@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import {
   enumerateDateRange,
   isDateRangePreset,
-  parisDateFromInstant,
   realAppointments,
   realCostPerAppointment,
   resolveDateRange,
@@ -31,28 +30,7 @@ import {
   surfaceAlt,
   violet,
 } from './format'
-import { CalendarIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from './icons'
-
-// Facebook/Instagram (Vue d'ensemble) : jamais meta_pixel_leads (voir
-// BRIEF-CLAUDE-CODE.md — un lead de pixel Meta n'est pas un rendez-vous
-// confirmé). Source pour une campagne dynamique (sync_locked=false) :
-// rendez-vous Calendly actifs dont acquisition_channel commence par
-// "Facebook"/"Instagram" (comparaison insensible à la casse/espaces, même
-// normalisation que groupByAcquisitionChannel dans campaigns/[id]/page.tsx).
-// Une campagne historique verrouillée (sync_locked=true) n'a jamais de
-// rendez-vous Calendly réel rattaché — son propre calcul (audiences.
-// facebook_leads/instagram_leads) est fait séparément là où ces deux
-// requêtes sont exécutées ci-dessous, pas dans cette fonction.
-function countFacebookInstagram(rawChannels: (string | null)[]): { facebook: number; instagram: number } {
-  let facebook = 0
-  let instagram = 0
-  for (const raw of rawChannels) {
-    const normalized = (raw ?? '').trim().toLowerCase()
-    if (normalized.startsWith('facebook')) facebook += 1
-    else if (normalized.startsWith('instagram')) instagram += 1
-  }
-  return { facebook, instagram }
-}
+import { CalendarIcon, DollarIcon, UserIcon } from './icons'
 
 export default async function DashboardPage({
   searchParams,
@@ -157,7 +135,7 @@ export default async function DashboardPage({
 
     const { data: campaignMeta } = await supabase
       .from('campaigns')
-      .select('id, campaign_number, published, sync_locked')
+      .select('id, campaign_number, published')
       .eq('client_id', profile.client_id)
       .order('campaign_number', { ascending: true })
 
@@ -166,71 +144,19 @@ export default async function DashboardPage({
     // aussi comparison/page.tsx et campaigns/[id]/page.tsx, même règle).
     // L'admin voit tout, y compris les campagnes non encore publiées.
     const visibleCampaignMeta = (campaignMeta ?? []).filter((c) => isAdmin || c.published)
-    const visibleCampaignIds = visibleCampaignMeta.map((c) => c.id)
-
-    // Facebook/Instagram par campagne (voir countFacebookInstagram ci-dessus
-    // pour la règle de classification) : deux sources selon sync_locked,
-    // jamais meta_pixel_leads. Historique verrouillée : audiences.
-    // facebook_leads/instagram_leads (total campagne — pas de granularité
-    // journalière côté Excel, donc jamais filtré par la période active,
-    // même principe que le donut de campaigns/[id]/page.tsx). Dynamique :
-    // rendez-vous Calendly actifs filtrés sur la même période que le KPI
-    // "Rendez-vous" ci-dessus (start_time, Europe/Paris).
-    const { data: audienceFbIgRows } = await supabase
-      .from('audiences')
-      .select('campaign_id, facebook_leads, instagram_leads')
-      .in('campaign_id', visibleCampaignIds)
-
-    const audienceFbIgByCampaign = new Map<string, { facebook: number; instagram: number }>()
-    for (const a of audienceFbIgRows ?? []) {
-      const agg = audienceFbIgByCampaign.get(a.campaign_id) ?? { facebook: 0, instagram: 0 }
-      agg.facebook += a.facebook_leads ?? 0
-      agg.instagram += a.instagram_leads ?? 0
-      audienceFbIgByCampaign.set(a.campaign_id, agg)
-    }
-
-    const { data: channelAppointmentRows } = await supabase
-      .from('appointments')
-      .select('campaign_id, acquisition_channel, start_time')
-      .eq('client_id', profile.client_id)
-      .eq('status', 'active')
-      .in('campaign_id', visibleCampaignIds)
-
-    const calendlyFbIgByCampaign = new Map<string, { facebook: number; instagram: number }>()
-    for (const a of channelAppointmentRows ?? []) {
-      if (!a.campaign_id) continue
-      const statDate = parisDateFromInstant(a.start_time)
-      if (statDate < resolvedRange.start || statDate > resolvedRange.end) continue
-      const existing = calendlyFbIgByCampaign.get(a.campaign_id) ?? { facebook: 0, instagram: 0 }
-      const { facebook, instagram } = countFacebookInstagram([a.acquisition_channel])
-      existing.facebook += facebook
-      existing.instagram += instagram
-      calendlyFbIgByCampaign.set(a.campaign_id, existing)
-    }
 
     const campaignRows = visibleCampaignMeta
       .filter((c) => byCampaign.has(c.id))
       .map((c) => {
         const agg = byCampaign.get(c.id)!
-        const fbIg = c.sync_locked
-          ? audienceFbIgByCampaign.get(c.id) ?? { facebook: 0, instagram: 0 }
-          : calendlyFbIgByCampaign.get(c.id) ?? { facebook: 0, instagram: 0 }
         return {
           id: c.id,
           campaignNumber: c.campaign_number,
           spend: agg.spend,
           appointments: agg.appointments,
           costPerAppt: realCostPerAppointment(agg.spend, agg.appointments),
-          facebook: fbIg.facebook,
-          instagram: fbIg.instagram,
         }
       })
-
-    // Total conforme à la somme des campagnes actuellement affichées (déjà
-    // filtrées par rôle/publication ci-dessus) — jamais un total toutes
-    // campagnes confondues indépendant de ce qui est réellement listé.
-    const totalFacebook = campaignRows.reduce((sum, r) => sum + r.facebook, 0)
-    const totalInstagram = campaignRows.reduce((sum, r) => sum + r.instagram, 0)
 
     return (
       <main style={{ padding: '40px 40px 64px' }}>
@@ -276,22 +202,6 @@ export default async function DashboardPage({
             label="Coût / RDV réel"
             value={formatCost(avgRealCostPerAppointment)}
           />
-          <KpiCard
-            icon={<TrendingUpIcon size={20} />}
-            iconColor={indigo}
-            iconBg={softBg(indigo, 0.14)}
-            label="Facebook"
-            value={String(totalFacebook)}
-            foot="somme des campagnes affichées"
-          />
-          <KpiCard
-            icon={<TrackingIcon size={20} />}
-            iconColor={violet}
-            iconBg={softBg(violet, 0.14)}
-            label="Instagram"
-            value={String(totalInstagram)}
-            foot="somme des campagnes affichées"
-          />
         </div>
 
         <div style={{ margin: '0 0 32px' }}>
@@ -304,10 +214,10 @@ export default async function DashboardPage({
 
         <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
               <thead>
                 <tr>
-                  {['#', 'Campagne', 'Dépensé', 'Rendez-vous', 'Coût / RDV réel', 'Facebook', 'Instagram'].map((label, i) => (
+                  {['#', 'Campagne', 'Dépensé', 'Rendez-vous', 'Coût / RDV réel'].map((label, i) => (
                     <th
                       key={label}
                       style={{
@@ -348,8 +258,6 @@ export default async function DashboardPage({
                     <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {formatCost(row.costPerAppt)}
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>{row.facebook}</td>
-                    <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 500, textAlign: 'right' }}>{row.instagram}</td>
                   </tr>
                 ))}
               </tbody>
@@ -383,20 +291,6 @@ export default async function DashboardPage({
                   <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{row.appointments}</div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-                <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
-                    Facebook
-                  </div>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{row.facebook}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
-                    Instagram
-                  </div>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 3 }}>{row.instagram}</div>
-                </div>
-              </div>
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${line}` }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted }}>
                   Coût / RDV réel
@@ -421,8 +315,6 @@ export default async function DashboardPage({
     meta_pixel_leads: number
     manual_appointments_adjustment: number
     calendlyAppointments: number
-    facebook: number
-    instagram: number
     sync_locked: boolean
   }[] = []
   let campaignsError: string | null = null
@@ -443,7 +335,6 @@ export default async function DashboardPage({
     // aussi comparison/page.tsx et campaigns/[id]/page.tsx). L'admin voit
     // tout, y compris les campagnes non encore publiées.
     const loaded = (data ?? []).filter((c) => isAdmin || c.published)
-    const loadedIds = loaded.map((c) => c.id)
     // RDV réels par campagne : comptés directement dans appointments
     // (status='active', campaign_id rattaché) plutôt que lus depuis
     // campaigns.calendly_appointments, qui reste à 0 par défaut (jamais
@@ -463,46 +354,7 @@ export default async function DashboardPage({
       })
     )
 
-    // Facebook/Instagram (voir countFacebookInstagram et le commentaire de la
-    // branche "période active" ci-dessus pour la règle complète) : vue
-    // "toutes campagnes confondues", donc jamais filtré par période ici,
-    // contrairement à la branche période active.
-    const { data: audienceFbIgRows } = await supabase
-      .from('audiences')
-      .select('campaign_id, facebook_leads, instagram_leads')
-      .in('campaign_id', loadedIds)
-
-    const audienceFbIgByCampaign = new Map<string, { facebook: number; instagram: number }>()
-    for (const a of audienceFbIgRows ?? []) {
-      const agg = audienceFbIgByCampaign.get(a.campaign_id) ?? { facebook: 0, instagram: 0 }
-      agg.facebook += a.facebook_leads ?? 0
-      agg.instagram += a.instagram_leads ?? 0
-      audienceFbIgByCampaign.set(a.campaign_id, agg)
-    }
-
-    const { data: channelAppointmentRows } = await supabase
-      .from('appointments')
-      .select('campaign_id, acquisition_channel')
-      .eq('client_id', profile.client_id as string)
-      .eq('status', 'active')
-      .in('campaign_id', loadedIds)
-
-    const calendlyFbIgByCampaign = new Map<string, { facebook: number; instagram: number }>()
-    for (const a of channelAppointmentRows ?? []) {
-      if (!a.campaign_id) continue
-      const existing = calendlyFbIgByCampaign.get(a.campaign_id) ?? { facebook: 0, instagram: 0 }
-      const { facebook, instagram } = countFacebookInstagram([a.acquisition_channel])
-      existing.facebook += facebook
-      existing.instagram += instagram
-      calendlyFbIgByCampaign.set(a.campaign_id, existing)
-    }
-
-    campaigns = loaded.map((c, i) => {
-      const fbIg = c.sync_locked
-        ? audienceFbIgByCampaign.get(c.id) ?? { facebook: 0, instagram: 0 }
-        : calendlyFbIgByCampaign.get(c.id) ?? { facebook: 0, instagram: 0 }
-      return { ...c, calendlyAppointments: counts[i], facebook: fbIg.facebook, instagram: fbIg.instagram }
-    })
+    campaigns = loaded.map((c, i) => ({ ...c, calendlyAppointments: counts[i] }))
   }
 
   const totalSpend = campaigns.reduce((sum, c) => sum + c.meta_spend, 0)
@@ -511,11 +363,6 @@ export default async function DashboardPage({
     0
   )
   const avgRealCostPerAppointment = realCostPerAppointment(totalSpend, totalRealAppointments)
-  // Total conforme à la somme des campagnes actuellement affichées (déjà
-  // filtrées par rôle/publication ci-dessus), même règle que la branche
-  // "période active".
-  const totalFacebook = campaigns.reduce((sum, c) => sum + c.facebook, 0)
-  const totalInstagram = campaigns.reduce((sum, c) => sum + c.instagram, 0)
 
   return (
     <main style={{ padding: '40px 40px 64px' }}>
@@ -558,22 +405,6 @@ export default async function DashboardPage({
               iconBg={softBg(amber, 0.14)}
               label="Coût / RDV réel"
               value={formatCost(avgRealCostPerAppointment)}
-            />
-            <KpiCard
-              icon={<TrendingUpIcon size={20} />}
-              iconColor={indigo}
-              iconBg={softBg(indigo, 0.14)}
-              label="Facebook"
-              value={String(totalFacebook)}
-              foot="somme des campagnes affichées"
-            />
-            <KpiCard
-              icon={<TrackingIcon size={20} />}
-              iconColor={violet}
-              iconBg={softBg(violet, 0.14)}
-              label="Instagram"
-              value={String(totalInstagram)}
-              foot="somme des campagnes affichées"
             />
           </div>
 
