@@ -8,9 +8,11 @@ import type {
   MetaAd,
   MetaAdInsights,
   MetaAdSet,
+  MetaAdSetAgeGenderInsight,
   MetaAdSetAgeInsight,
   MetaAdSetDailyInsight,
   MetaAdSetInsights,
+  MetaAdSetPlatformInsight,
   MetaActionValue,
 } from './types'
 
@@ -41,6 +43,102 @@ export function mapAdSetToAudienceInsert(
     meta_spend: insights ? Number(insights.spend) : 0,
     meta_pixel_leads: insights ? extractActionValue(insights.actions, leadActionType) : 0,
   }
+}
+
+// Colonnes leads_{genre}_{tranche} réellement présentes sur audiences (migration
+// 20260809000000, import historique Excel jusqu'ici). Seules 4 tranches
+// existent dans ce schéma (18-24 à 45-54, PAS de palier "55 et +" — à la
+// différence de appointment_breakdowns.age_55_plus ci-dessous, qui reste au
+// niveau campagne) : c'est la granularité déjà retenue par l'import Excel
+// historique, jamais élargie ici. Tranches Meta "55-64"/"65+"/"Unknown" et
+// genre "unknown" délibérément ignorés — même principe que AGE_BUCKET_COLUMNS
+// ci-dessous (mapAgeInsightsToBreakdownInsert) : aucune colonne ne peut les
+// accueillir sans répartition arbitraire, donc jamais comptés nulle part.
+// Vérifié en conditions réelles sur la campagne n°20 : ces tranches/genre
+// exclus valent 0 lead sur les deux audiences (Barbier, Coiffeur) — aucune
+// perte réelle constatée à ce jour ; si une future campagne y a de vrais
+// leads, ils resteraient non comptés tant qu'aucune colonne dédiée n'existe
+// (recommandation : migration future si ce cas se présente réellement).
+type AudienceAgeGenderColumn =
+  | 'leads_male_18_24'
+  | 'leads_male_25_34'
+  | 'leads_male_35_44'
+  | 'leads_male_45_54'
+  | 'leads_female_18_24'
+  | 'leads_female_25_34'
+  | 'leads_female_35_44'
+  | 'leads_female_45_54'
+
+const AUDIENCE_AGE_GENDER_COLUMNS: Record<string, Record<string, AudienceAgeGenderColumn>> = {
+  '18-24': { male: 'leads_male_18_24', female: 'leads_female_18_24' },
+  '25-34': { male: 'leads_male_25_34', female: 'leads_female_25_34' },
+  '35-44': { male: 'leads_male_35_44', female: 'leads_female_35_44' },
+  '45-54': { male: 'leads_male_45_54', female: 'leads_female_45_54' },
+}
+
+// Répartition des leads par genre x tranche d'âge, AU NIVEAU DE CETTE
+// AUDIENCE (un ad set = une audience, voir MetaAdSetAgeGenderInsight,
+// types.ts) — remplit les mêmes colonnes que l'import historique Excel
+// (audiences.leads_male_18_24...leads_female_45_54), jusqu'ici jamais
+// renseignées par la synchro Meta réelle. Toujours des valeurs réelles
+// (0 compris, jamais NULL) puisqu'un ad set réel a toujours une réponse
+// Meta, même sans aucun lead dans une tranche donnée.
+export function mapAgeGenderInsightsToAudienceFields(
+  insights: MetaAdSetAgeGenderInsight[],
+  leadActionType: string
+): Record<AudienceAgeGenderColumn, number> {
+  const totals: Record<AudienceAgeGenderColumn, number> = {
+    leads_male_18_24: 0,
+    leads_male_25_34: 0,
+    leads_male_35_44: 0,
+    leads_male_45_54: 0,
+    leads_female_18_24: 0,
+    leads_female_25_34: 0,
+    leads_female_35_44: 0,
+    leads_female_45_54: 0,
+  }
+
+  for (const row of insights) {
+    const column = AUDIENCE_AGE_GENDER_COLUMNS[row.age]?.[row.gender]
+    if (!column) continue
+    totals[column] += extractActionValue(row.actions, leadActionType)
+  }
+
+  return totals
+}
+
+// Répartition des leads par plateforme (facebook_leads/instagram_leads,
+// colonnes réellement présentes sur audiences — migration 20260808000000,
+// import historique Excel jusqu'ici), AU NIVEAU DE CETTE AUDIENCE (un ad set
+// = une audience, voir MetaAdSetPlatformInsight, types.ts). Seules
+// "facebook"/"instagram" sont retenues (mêmes colonnes que l'Excel — aucune
+// colonne pour "audience_network"/"threads"/"unknown") : même principe que
+// AUDIENCE_AGE_GENDER_COLUMNS ci-dessus, jamais de répartition arbitraire
+// pour ces autres plateformes. Vérifié en conditions réelles sur la
+// campagne n°20 : ces plateformes exclues valent 0 lead sur les deux
+// audiences (Barbier, Coiffeur) — facebook_leads + instagram_leads =
+// meta_pixel_leads exactement, aucune perte réelle constatée à ce jour.
+// Source exclusivement Meta (jamais Calendly, qui reste la seule source de
+// vérité des RDV — voir BRIEF-CLAUDE-CODE.md). Toujours des valeurs réelles
+// (0 compris, jamais NULL) puisqu'un ad set réel a toujours une réponse Meta.
+const AUDIENCE_PLATFORM_COLUMNS: Record<string, 'facebook_leads' | 'instagram_leads'> = {
+  facebook: 'facebook_leads',
+  instagram: 'instagram_leads',
+}
+
+export function mapPlatformInsightsToAudienceFields(
+  insights: MetaAdSetPlatformInsight[],
+  leadActionType: string
+): { facebook_leads: number; instagram_leads: number } {
+  const totals = { facebook_leads: 0, instagram_leads: 0 }
+
+  for (const row of insights) {
+    const column = AUDIENCE_PLATFORM_COLUMNS[row.publisher_platform]
+    if (!column) continue
+    totals[column] += extractActionValue(row.actions, leadActionType)
+  }
+
+  return totals
 }
 
 export type AggregatedDailyStat = { statDate: string; metaSpend: number; metaPixelLeads: number }

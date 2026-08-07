@@ -6,9 +6,11 @@ import type {
   MetaAd,
   MetaAdInsights,
   MetaAdSet,
+  MetaAdSetAgeGenderInsight,
   MetaAdSetAgeInsight,
   MetaAdSetDailyInsight,
   MetaAdSetInsights,
+  MetaAdSetPlatformInsight,
   MetaAdVideoLookup,
   MetaVideoPicture,
   MetaVideoTitle,
@@ -126,6 +128,47 @@ export async function fetchAdSetAgeInsights(
   return metaApiGetAll<MetaAdSetAgeInsight>(`${adSetId}/insights`, {
     fields: 'spend,actions',
     breakdowns: 'age',
+    date_preset: datePreset,
+  })
+}
+
+// Répartition des leads par tranche d'âge x genre (breakdowns=age,gender),
+// AU NIVEAU AD SET — donc déjà spécifique à une seule audience (Barbier ou
+// Coiffeur), contrairement à fetchAdSetAgeInsights ci-dessus qui reste
+// ensuite agrégée au niveau campagne (voir mapAgeInsightsToBreakdownInsert).
+// Vérifiée en conditions réelles sur la campagne n°20 (voir
+// lib/sync/types.ts, MetaAdSetAgeGenderInsight) : permet de renseigner
+// audiences.leads_male_18_24.../leads_female_45_54 (import historique Excel
+// jusqu'ici, jamais la synchro Meta) — voir mapAgeGenderInsightsToAudienceFields,
+// lib/sync/mapper.ts. Même pagination que les autres endpoints insights.
+export async function fetchAdSetAgeGenderInsights(
+  adSetId: string,
+  datePreset = 'maximum'
+): Promise<MetaAdSetAgeGenderInsight[]> {
+  return metaApiGetAll<MetaAdSetAgeGenderInsight>(`${adSetId}/insights`, {
+    fields: 'spend,actions',
+    breakdowns: 'age,gender',
+    date_preset: datePreset,
+  })
+}
+
+// Répartition des leads par plateforme (breakdowns=publisher_platform), AU
+// NIVEAU AD SET — donc déjà spécifique à une seule audience (Barbier ou
+// Coiffeur). Vérifiée en conditions réelles sur la campagne n°20 (voir
+// lib/sync/types.ts, MetaAdSetPlatformInsight) : seul breakdown testé qui
+// reproduit exactement la répartition Facebook/Instagram des leads (jamais
+// platform_position seul, invalide ici côté Meta ; jamais impression_device,
+// qui catégorise par appareil, pas par plateforme). Permet de renseigner
+// audiences.facebook_leads/instagram_leads (import historique Excel jusqu'ici,
+// jamais la synchro Meta) — voir mapPlatformInsightsToAudienceFields,
+// lib/sync/mapper.ts. Même pagination que les autres endpoints insights.
+export async function fetchAdSetPlatformInsights(
+  adSetId: string,
+  datePreset = 'maximum'
+): Promise<MetaAdSetPlatformInsight[]> {
+  return metaApiGetAll<MetaAdSetPlatformInsight>(`${adSetId}/insights`, {
+    fields: 'spend,actions',
+    breakdowns: 'publisher_platform',
     date_preset: datePreset,
   })
 }

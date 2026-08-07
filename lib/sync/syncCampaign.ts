@@ -45,9 +45,11 @@ import { logError } from '@/lib/logger'
 import {
   fetchAdInsights,
   fetchAdSetAds,
+  fetchAdSetAgeGenderInsights,
   fetchAdSetAgeInsights,
   fetchAdSetDailyInsights,
   fetchAdSetInsights,
+  fetchAdSetPlatformInsights,
   fetchCampaignAdSets,
   fetchVideoTitle,
 } from './meta'
@@ -57,7 +59,9 @@ import {
   extractVideoId,
   mapAdSetToAudienceInsert,
   mapAdToVideoInsert,
+  mapAgeGenderInsightsToAudienceFields,
   mapAgeInsightsToBreakdownInsert,
+  mapPlatformInsightsToAudienceFields,
 } from './mapper'
 import type { MetaAd, SyncCampaignParams, SyncCampaignResult } from './types'
 
@@ -173,13 +177,42 @@ async function runSync(
   const barbierAdSet = group.barbier
   const coiffeurAdSet = group.coiffeur
 
-  const [barbierInsights, coiffeurInsights] = await Promise.all([
+  const [
+    barbierInsights,
+    coiffeurInsights,
+    barbierAgeGenderInsights,
+    coiffeurAgeGenderInsights,
+    barbierPlatformInsights,
+    coiffeurPlatformInsights,
+  ] = await Promise.all([
     fetchAdSetInsights(barbierAdSet.id),
     fetchAdSetInsights(coiffeurAdSet.id),
+    // Répartition des leads par genre x tranche d'âge, AU NIVEAU DE CETTE
+    // audience (un ad set = une audience) : remplit les mêmes colonnes que
+    // l'import historique Excel (audiences.leads_male_18_24...
+    // leads_female_45_54), voir mapAgeGenderInsightsToAudienceFields
+    // (lib/sync/mapper.ts) — modèle cible unifié Excel/Meta pour une
+    // audience (voir BRIEF-CLAUDE-CODE.md).
+    fetchAdSetAgeGenderInsights(barbierAdSet.id),
+    fetchAdSetAgeGenderInsights(coiffeurAdSet.id),
+    // Répartition des leads par plateforme (facebook_leads/instagram_leads),
+    // AU NIVEAU DE CETTE audience — source exclusivement Meta (jamais
+    // Calendly, qui reste la seule source de vérité des RDV), voir
+    // mapPlatformInsightsToAudienceFields (lib/sync/mapper.ts).
+    fetchAdSetPlatformInsights(barbierAdSet.id),
+    fetchAdSetPlatformInsights(coiffeurAdSet.id),
   ])
 
-  const barbierAudienceData = mapAdSetToAudienceInsert('', barbierAdSet, barbierInsights, leadActionType)
-  const coiffeurAudienceData = mapAdSetToAudienceInsert('', coiffeurAdSet, coiffeurInsights, leadActionType)
+  const barbierAudienceData = {
+    ...mapAdSetToAudienceInsert('', barbierAdSet, barbierInsights, leadActionType),
+    ...mapAgeGenderInsightsToAudienceFields(barbierAgeGenderInsights, leadActionType),
+    ...mapPlatformInsightsToAudienceFields(barbierPlatformInsights, leadActionType),
+  }
+  const coiffeurAudienceData = {
+    ...mapAdSetToAudienceInsert('', coiffeurAdSet, coiffeurInsights, leadActionType),
+    ...mapAgeGenderInsightsToAudienceFields(coiffeurAgeGenderInsights, leadActionType),
+    ...mapPlatformInsightsToAudienceFields(coiffeurPlatformInsights, leadActionType),
+  }
 
   const barbierStart = toDateOnly(barbierAdSet.start_time)
   const coiffeurStart = toDateOnly(coiffeurAdSet.start_time)

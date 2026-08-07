@@ -45,6 +45,43 @@ export type MetaAdSetAgeInsight = {
   actions?: MetaAction[]
 }
 
+// Une ligne par tranche d'âge x genre Meta (fields=spend,actions,
+// breakdowns=age,gender), au niveau AD SET — donc déjà spécifique à UNE
+// audience (Barbier ou Coiffeur, un ad set = une audience, voir
+// BRIEF-CLAUDE-CODE.md section 2), sans agrégation supplémentaire
+// nécessaire. Vérifié en conditions réelles sur les 2 ad sets de la
+// campagne n°20 : `gender` observé = "male", "female", "unknown" (leads
+// dont Meta ne peut pas déterminer le genre) ; `age` mêmes valeurs que
+// MetaAdSetAgeInsight ci-dessus, y compris "Unknown". Somme des leads
+// (action_type = LEAD_ACTION_TYPE) sur toutes les lignes d'un ad set =
+// audiences.meta_pixel_leads de ce même ad set (vérifié exactement égal,
+// Barbier 3/3, Coiffeur 6/6) — aucune perte, aucun doublon de comptage.
+export type MetaAdSetAgeGenderInsight = {
+  age: string
+  gender: string
+  spend: string
+  actions?: MetaAction[]
+}
+
+// Une ligne par plateforme Meta (fields=spend,actions, breakdowns=
+// publisher_platform), au niveau AD SET — déjà spécifique à une audience
+// (même principe que MetaAdSetAgeGenderInsight ci-dessus). Vérifié en
+// conditions réelles sur les 2 ad sets de la campagne n°20 : `publisher_platform`
+// observé = "facebook", "instagram", "audience_network", "threads", et
+// parfois "unknown" — testé en même temps que `platform_position`
+// (invalide en combinaison avec des données de conversion, erreur Meta
+// #100 confirmée) et `impression_device` (fonctionne mais catégorise par
+// type d'appareil, pas par plateforme publicitaire — dimension inadaptée
+// ici). Seul `publisher_platform` seul reproduit exactement la répartition
+// Facebook/Instagram : somme des leads (action_type = LEAD_ACTION_TYPE) sur
+// toutes les lignes d'un ad set = audiences.meta_pixel_leads de ce même ad
+// set (vérifié exactement égal, Barbier 3/3, Coiffeur 6/6).
+export type MetaAdSetPlatformInsight = {
+  publisher_platform: string
+  spend: string
+  actions?: MetaAction[]
+}
+
 // object_story_spec.video_data.video_id est le SEUL video_id à utiliser
 // (voir lib/sync/mapper.ts, extractVideoId) : creative.video_id (racine,
 // absent ici volontairement) pointe vers un autre id Meta, inaccessible avec

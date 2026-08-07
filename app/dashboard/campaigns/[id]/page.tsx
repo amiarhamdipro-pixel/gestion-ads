@@ -550,7 +550,7 @@ export default async function CampaignDetailPage({
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
         <h2 style={{ fontWeight: 700, fontSize: 17 }}>
-          {campaign.sync_locked ? 'Leads par plateforme (Facebook / Instagram)' : "Rendez-vous par canal d'acquisition"}
+          {campaign.sync_locked ? 'Leads par plateforme (Facebook / Instagram)' : 'RDV par plateforme'}
         </h2>
       </div>
 
@@ -582,7 +582,7 @@ export default async function CampaignDetailPage({
             aria-label={
               campaign.sync_locked
                 ? `${channelTotal} leads répartis par plateforme`
-                : `${channelTotal} rendez-vous répartis par canal d'acquisition`
+                : `${channelTotal} rendez-vous répartis par plateforme`
             }
           >
             <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
