@@ -1037,3 +1037,44 @@ Relance `node meta-test.mjs` et rouvre `resultat-meta.txt`.
 - Ne jamais committer `.env` (il contient le token).
 - Stack cible : **Next.js + Supabase + Vercel** (offres gratuites suffisantes à
   cette échelle).
+
+---
+
+# ÉTAT FIGÉ — V1.0
+
+- **Statut** : STABLE
+- **Version** : v1.0
+- **Tag Git** : v1.0
+- **Commit de référence** :
+  `c30c013927546563732e8a8ea5307d78b0fd7eec`
+
+Fonctionnalités réellement disponibles dans cette version :
+
+- Authentification Supabase
+- Gestion Admin / Client
+- Dashboard Vue d'ensemble
+- Détail campagne
+- Comparaison
+- Synchronisation Meta
+- Synchronisation Calendly
+- Import historique Excel
+- Publication / verrouillage
+- Graphiques validés
+- Historique mensuel basé sur `campaign_daily_stats`
+- Branding (favicon / OpenGraph)
+- Miniatures vidéo persistantes (POC campagne 20)
+
+# REPRISE DU PROJET
+
+- La branche de référence est `main`.
+- Le tag `v1.0` constitue le point de restauration officiel de la première
+  version stable.
+- Les futures évolutions devront partir de cette base.
+
+# ÉVOLUTIONS IDENTIFIÉES
+
+- généraliser les miniatures vidéo aux autres campagnes ;
+- éventuel déverrouillage d'une campagne par l'admin ;
+- journal d'audit publication / verrouillage ;
+- amélioration de la gestion du token Meta ;
+- améliorations UX issues des retours utilisateurs.

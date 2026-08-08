@@ -9,6 +9,19 @@ Production : https://ads.amerys-agency.com
 
 ---
 
+## Version stable
+
+Version : v1.0
+
+Tag Git : v1.0
+
+Commit :
+`c30c013927546563732e8a8ea5307d78b0fd7eec`
+
+**`BRIEF-CLAUDE-CODE.md` est la source de vérité du projet.**
+
+---
+
 ## Architecture du projet
 
 ```
