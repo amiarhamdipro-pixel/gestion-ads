@@ -221,7 +221,12 @@ migration n'est appliquée automatiquement par ce dépôt.
   projet de test avant toute restauration en production.
 
 ## Déploiement
-Stack cible : **Next.js (Vercel) + Supabase**.
+Hébergement de production réel : **Hostinger** + Supabase distant de
+production (voir `BRIEF-CLAUDE-CODE.md`, section START HERE). Vercel était la
+stack cible envisagée à la conception mais n'a pas été retenue ; les étapes
+ci-dessous (écrites pour Vercel) restent indicatives pour les variables
+d'environnement et la configuration Supabase, pas pour la procédure de
+déploiement elle-même.
 1. Renseigner toutes les variables d'environnement (voir ci-dessus) dans les
    *Environment Variables* du projet Vercel — `NEXT_PUBLIC_SITE_URL` doit
    pointer vers le domaine de production (`https://ads.amerys-agency.com`).

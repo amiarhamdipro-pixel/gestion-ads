@@ -1,8 +1,89 @@
-# Brief projet — Dashboard de suivi des campagnes (Amerys)
+# START HERE — ÉTAT ACTUEL
+
+> **En cas de contradiction entre cette section et une section historique plus
+> bas dans ce fichier, START HERE fait foi.** Le reste du document est un
+> journal historique conservé pour traçabilité, pas systématiquement à jour.
+
+## Statut
+
+- **Statut** : STABLE — PROJET EN PAUSE.
+- **Version stable** : v1.0 — Tag Git `v1.0` — Commit
+  `c30c013927546563732e8a8ea5307d78b0fd7eec`.
+- **Dernier commit (documentation)** : `d3701ee`.
+- **Aucune tâche active actuellement.** Ne pas choisir automatiquement une
+  évolution à la reprise — attendre la demande précise du fondateur.
+
+## Environnement réel — PRODUCTION
+
+- **L'application est EN PRODUCTION**, pas en local, pas en démo.
+- **URL** : https://ads.amerys-agency.com
+- **Hébergement applicatif** : **Hostinger**. Vercel était la stack cible
+  envisagée en phase de conception (voir sections 8/9 plus bas) mais n'est
+  **pas** l'hébergement réellement retenu — ne plus le présenter comme actuel.
+- **Base de données / Auth / Storage** : Supabase **distant de production**.
+
+Conséquences pour toute intervention future :
+- la base Supabase est une **base de production réelle**, pas un bac à sable ;
+- toute synchronisation Meta/Calendly lancée depuis l'admin peut modifier de
+  **vraies données** ;
+- toute campagne `published=true` est visible par un **vrai client** ;
+- ne jamais lancer de synchro, migration ou action destructive sans demande
+  explicite du fondateur.
+
+## Architecture fonctionnelle actuelle
+
+- **Workflow métier** : Synchroniser → Contrôler les données → **Publier** →
+  visible client → **verrouillée définitivement** (plus jamais resynchronisée).
+- **Campagnes 1 à 19** : historiques, alimentées par import Excel
+  (`scripts/import-historical-excel.ts`), `sync_locked=true`, plus jamais
+  synchronisées via Meta/Calendly.
+- **Campagnes 20+** : dynamiques, synchronisées via Meta (totaux + quotidien)
+  et Calendly (RDV + quotidien) ; **campagne 20 = première référence
+  dynamique**, utilisée pour valider tous les mécanismes actuels (rattachement
+  RDV, publication, miniatures...).
+- **Meta** : accès **lecture seule** uniquement (jamais d'écriture/pause/
+  création de campagne côté Meta).
+- **Calendly** : **source de vérité pour les rendez-vous** (coût par lead réel
+  = dépensé Meta ÷ RDV Calendly, jamais le coût par résultat Meta).
+- **Facebook/Instagram et âge/genre** : ventilés par Meta, **au niveau de
+  l'audience** (Barbier vs Coiffeur), jamais au niveau campagne globale.
+- **Miniatures vidéo persistantes** : mécanisme validé, actuellement **limité
+  à la campagne 20** (POC), pas généralisé aux autres campagnes dynamiques.
+
+## Procédure de reprise
+
+Lors d'une nouvelle session :
+1. Lire uniquement cette section START HERE.
+2. Vérifier `git status --short`.
+3. Vérifier `git log -5 --oneline`.
+4. Vérifier que la branche est `main`.
+5. Ne lancer aucune synchro, migration ou écriture en base sans demande
+   explicite.
+6. Demander uniquement : « Quelle évolution souhaites-tu reprendre ? »
+7. Ensuite seulement, lire les sections historiques / fichiers nécessaires à
+   cette évolution précise.
+
+But : éviter un nouvel audit global de ~1000 lignes à chaque reprise.
+
+## Backlog — évolutions connues mais NON PLANIFIÉES
+
+NON PRIORISÉES — NE PAS LANCER SANS DEMANDE EXPLICITE :
+- généralisation des miniatures vidéo aux autres campagnes ;
+- éventuel déverrouillage d'une campagne par l'admin ;
+- journal d'audit publication / verrouillage ;
+- amélioration de la gestion du token Meta (durée de vie ~1h) ;
+- améliorations UX issues de futurs retours utilisateurs.
+
+---
+
+# Brief projet — Dashboard de suivi des campagnes (Amerys) [historique]
 
 > À lire en entier avant d'agir. Ce fichier donne le contexte complet du projet
 > et l'état d'avancement. **Phase 0 et Phase 1 (fondations) réalisées.** Voir
 > section 5 pour le détail. Prochaine étape : Phase 2 (synchro Meta/Calendly).
+>
+> ⚠️ Section historique : voir START HERE en tête de fichier pour l'état
+> réel actuel (production, hébergement, statut).
 
 ---
 
@@ -91,6 +172,9 @@ code a changé depuis) :
 - Auth email/mot de passe minimale (`/login`, `/dashboard` protégé).
 - Aucune mise en ligne effectuée : le projet reste local (pas de Vercel, pas de
   déploiement Supabase). La mise en ligne reste prévue en **Phase 4**.
+  *(Constat vrai au moment de la Phase 1 uniquement — obsolète depuis. Le
+  projet est désormais EN PRODUCTION sur Hostinger + Supabase distant, voir
+  START HERE en tête de fichier.)*
 
 **Phase 2 — Synchro : en cours.**
 - `lib/sync/` : lecture Meta (`meta.ts`), regroupement par numéro
@@ -1016,6 +1100,10 @@ Relance `node meta-test.mjs` et rouvre `resultat-meta.txt`.
 ---
 
 ## 8. Feuille de route (pour info, ne pas coder maintenant)
+
+> ⚠️ Vercel ci-dessous était la stack cible envisagée à la conception, **non
+> retenue en pratique** : l'hébergement applicatif réel est **Hostinger** (voir
+> START HERE en tête de fichier).
 
 - **Phase 1 — Fondations** : projet Next.js + Supabase + Vercel. Schéma de
   données (clients, campagnes, audiences barbier/coiffeur, vidéos, leads/RDV).
