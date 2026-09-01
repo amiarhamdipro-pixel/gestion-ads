@@ -17,10 +17,29 @@
 
 - **L'application est EN PRODUCTION**, pas en local, pas en démo.
 - **URL** : https://ads.amerys-agency.com
-- **Hébergement applicatif** : **Hostinger**. Vercel était la stack cible
-  envisagée en phase de conception (voir sections 8/9 plus bas) mais n'est
-  **pas** l'hébergement réellement retenu — ne plus le présenter comme actuel.
+- **Hébergement applicatif** : **Hostinger Premium**, servant
+  `https://ads.amerys-agency.com`. Vercel était la stack cible envisagée en
+  phase de conception (voir sections 8/9 plus bas) mais a été **abandonné** :
+  ce n'est pas l'hébergement retenu — ne plus le présenter comme actuel.
 - **Base de données / Auth / Storage** : Supabase **distant de production**.
+- **Maintien d'activité Supabase (keep-alive) — EN PLACE** : la migration
+  `supabase/migrations/20260811000000_keep_alive.sql` est **appliquée en
+  production** — table `public.keep_alive` (singleton, lecture seule
+  `anon`/`authenticated`, écritures publiques interdites, aucune donnée métier).
+  - GET anon validé depuis Hostinger : `HTTP 200` + `[{"singleton":true}]`.
+  - Écritures anon (INSERT / UPDATE / DELETE) : **refusées** (`42501 permission
+    denied`).
+  - Le keep-alive est désormais **centralisé sur Hostinger** (mutualisé entre
+    projets) : script `/home/u220932726/keep-alive/keep-alive.sh`, déclenché par
+    un **cron hPanel quotidien à 04:17 UTC**.
+  - Projets actuellement intégrés : **ADS_AMERYS**, **RITUAL_SPA**,
+    **RITUAL_HOME**. Tests manuels des 3 projets : **OK**.
+  - Le cron hPanel **n'est pas visible via `crontab -l`** (planifié depuis
+    l'interface hPanel, pas la crontab utilisateur) — ne pas en conclure qu'il
+    est absent.
+  - Ce mécanisme **maintient une activité régulière et réduit le risque de mise
+    en pause** de Supabase sur le plan Free ; il **ne garantit pas** l'absence de
+    suspension (seule une offre Supabase payante l'assure).
 
 Conséquences pour toute intervention future :
 - la base Supabase est une **base de production réelle**, pas un bac à sable ;
