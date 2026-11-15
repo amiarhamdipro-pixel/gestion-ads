@@ -30,9 +30,9 @@
 // start_time/event_type_uri) est toujours relue en entier — pas chère, un
 // seul type d'appel — mais /invitees (fetchInviteeDetails, coûteux, cause de
 // la panne de synchro d'origine) n'est appelé QUE pour les rendez-vous
-// nouveaux ou dont acquisition_channel OU booking_created_at est encore
-// null/vide en base. Un rendez-vous déjà connu avec ces deux valeurs déjà
-// renseignées réutilise directement les valeurs stockées : jamais reperdues,
+// nouveaux ou dont booking_created_at est encore null en base (jamais
+// enrichis, ou enrichissement échoué). Un rendez-vous déjà enrichi (canal
+// éventuellement vide) réutilise directement les valeurs stockées : jamais reperdues,
 // jamais re-demandées à Calendly. Les champs structurels (status, start_time,
 // event_type_uri) proviennent toujours de la lecture fraîche, jamais de la
 // base — seuls le canal et booking_created_at sont éligibles à la
@@ -201,13 +201,15 @@ export async function syncAppointments(clientId: string, targetCampaignNumber: n
   }
 
   // /invitees uniquement pour les rendez-vous nouveaux (absents de
-  // existingByUri) ou dont le canal OU booking_created_at stocké est encore
-  // null/vide — jamais pour un rendez-vous dont les deux valeurs sont déjà
-  // connues (cause racine de la lenteur d'origine, voir en-tête).
+  // existingByUri) ou dont booking_created_at stocké est encore null (jamais
+  // enrichi, ou lecture /invitees échouée : rien n'est alors écrit). Un
+  // booking_created_at renseigné prouve un enrichissement réussi : un canal
+  // vide est alors une réponse définitive (« Non renseigné »), jamais
+  // re-demandée à Calendly (cause des HTTP 429 à chaque synchro).
   const needsInviteeDetailsUris = dedupedEvents
     .filter((event) => {
       const existing = existingByUri.get(event.calendly_event_uri)
-      return !existing?.acquisition_channel || !existing?.booking_created_at
+      return !existing || !existing.booking_created_at
     })
     .map((event) => event.calendly_event_uri)
 
