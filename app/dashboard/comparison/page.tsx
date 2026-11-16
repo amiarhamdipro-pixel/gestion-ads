@@ -14,7 +14,9 @@ import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import { logError } from '@/lib/logger'
 import { accent, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import EmptyPeriodState from '../EmptyPeriodState'
-import VideoRanking, { type RankedVideo, type RankedVideosByAudience } from './VideoRanking'
+import VideoRanking, { type RankedVideo, type RankedVideosByAudience, type VideoOccurrenceView } from './VideoRanking'
+import CampaignPairComparison, { type PairCampaign } from './CampaignPairComparison'
+import VideoRecommendations, { buildVideoRecommendations } from './VideoRecommendations'
 
 type CampaignRow = {
   id: string
@@ -117,9 +119,44 @@ type VideoOccurrence = {
   displayName: string
 }
 
-function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<string>): RankedVideo[] {
+// Détail campagne par campagne d'une vidéo regroupée : une ligne par
+// AUDIENCE (campagne + Barbier/Coiffeur), calculée par rankOccurrences
+// elle-même sur les seules occurrences de cette audience — mêmes règles que
+// le classement (audience comptée une fois, audience partagée non
+// comparable, accroche sans plays_3s exclue). Une même vidéo présente deux
+// fois dans une audience reste donc une seule ligne, sans double comptage.
+function occurrenceViews(occurrences: VideoOccurrence[], sharedAudienceIds: Set<string>): VideoOccurrenceView[] {
+  const byAudience = new Map<string, VideoOccurrence[]>()
+  for (const o of occurrences) {
+    byAudience.set(o.audience.id, [...(byAudience.get(o.audience.id) ?? []), o])
+  }
+  return Array.from(byAudience.entries())
+    .map(([audienceId, list]) => {
+      const [stats] = rankOccurrences(list, sharedAudienceIds, false)
+      return {
+        key: audienceId,
+        campaignNumber: list[0].campaign?.campaign_number ?? null,
+        audienceType: list[0].audience.audience_type,
+        totalLeads: stats.totalLeads,
+        costPerLead: stats.costPerLead,
+        cplNote: stats.cplNote,
+        hookPlay: stats.hookPlay,
+        retentionRate: stats.retentionRate,
+      }
+    })
+    .sort(
+      (a, b) =>
+        (a.campaignNumber ?? Number.MAX_SAFE_INTEGER) - (b.campaignNumber ?? Number.MAX_SAFE_INTEGER) ||
+        a.audienceType.localeCompare(b.audienceType)
+    )
+}
+
+function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<string>, withDetail = true): RankedVideo[] {
   type VideoGroup = {
     displayName: string
+    // Occurrences brutes du groupe (déjà filtrées par audience en amont),
+    // pour le détail dépliable.
+    occurrences: VideoOccurrence[]
     audienceTypes: Set<'barbier' | 'coiffeur'>
     campaignNumbers: Set<number>
     // Audiences déjà comptées pour ce groupe : chacune une seule fois.
@@ -150,11 +187,13 @@ function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<
   }
 
   const groups = new Map<string, VideoGroup>()
-  for (const { video, audience, campaign, identityKey, displayName } of occurrences) {
+  for (const occurrence of occurrences) {
+    const { video, audience, campaign, identityKey, displayName } = occurrence
     let group = groups.get(identityKey)
     if (!group) {
       group = {
         displayName,
+        occurrences: [],
         audienceTypes: new Set(),
         campaignNumbers: new Set<number>(),
         countedAudienceIds: new Set<string>(),
@@ -173,6 +212,7 @@ function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<
       groups.set(identityKey, group)
     }
 
+    group.occurrences.push(occurrence)
     group.audienceTypes.add(audience.audience_type)
     if (campaign) group.campaignNumbers.add(campaign.campaign_number)
 
@@ -262,13 +302,29 @@ function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<
       cplNote,
       hookPlay: finalizeHookRate(g),
       retentionRate: finalizeRetentionRate(g),
+      occurrences: withDetail ? occurrenceViews(g.occurrences, sharedAudienceIds) : [],
     }
   })
 }
 
+// Visibilité client : coût/lead, leads Meta et leur motif d'indisponibilité
+// (qui révèle l'absence de leads) sont réservés à l'admin — retirés ici,
+// côté serveur, pour ne jamais être transmis au navigateur d'un client
+// (classement principal ET détail par campagne).
+function redactForClient(videos: RankedVideo[]): RankedVideo[] {
+  return videos.map((v) => ({
+    ...v,
+    totalLeads: null,
+    costPerLead: null,
+    cplNote: null,
+    occurrences: v.occurrences.map((o) => ({ ...o, totalLeads: null, costPerLead: null, cplNote: null })),
+  }))
+}
+
 async function computeRankedVideos(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
+  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[],
+  isAdmin: boolean
 ): Promise<RankedVideosByAudience> {
   const empty: RankedVideosByAudience = { all: [], barbier: [], coiffeur: [] }
   if (campaigns.length === 0) return empty
@@ -292,7 +348,9 @@ async function computeRankedVideos(
     )
   const videos = videoData ?? []
 
-  return rankVideoRows(audiences, videos, campaigns)
+  const ranked = rankVideoRows(audiences, videos, campaigns)
+  if (isAdmin) return ranked
+  return { all: redactForClient(ranked.all), barbier: redactForClient(ranked.barbier), coiffeur: redactForClient(ranked.coiffeur) }
 }
 
 // Partie pure (aucune lecture base) : occurrences, détection des audiences à
@@ -344,9 +402,14 @@ function rankVideoRows(
 export default async function ComparisonPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; from?: string; to?: string }>
+  searchParams: Promise<{ period?: string; from?: string; to?: string; cmp_a?: string | string[]; cmp_b?: string | string[] }>
 }) {
-  const { period, from, to } = await searchParams
+  const { period, from, to, cmp_a, cmp_b } = await searchParams
+  // Comparateur A/B (mode sans période uniquement) : identifiants résolus
+  // plus bas parmi les seules campagnes accessibles (voir
+  // CampaignPairComparison.tsx, buildPairComparison).
+  const pairA = typeof cmp_a === 'string' ? cmp_a : ''
+  const pairB = typeof cmp_b === 'string' ? cmp_b : ''
   const activePreset = isDateRangePreset(period) ? period : null
   const resolvedRange = activePreset ? resolveDateRange(activePreset, { start: from ?? null, end: to ?? null }) : null
   const queryString = buildDateRangeQueryString({ period, from, to })
@@ -469,7 +532,7 @@ export default async function ComparisonPage({
     // Classement vidéos : toujours toutes périodes confondues (voir
     // computeRankedVideos), calculé sur l'ensemble des campagnes du client —
     // pas seulement celles actives sur la période sélectionnée.
-    const rankedVideos = await computeRankedVideos(supabase, campaignMeta ?? [])
+    const rankedVideos = await computeRankedVideos(supabase, campaignMeta ?? [], isAdmin)
 
     return (
       <main style={{ padding: '40px 40px 64px', color: ink }}>
@@ -609,6 +672,15 @@ export default async function ComparisonPage({
         </div>
 
         <div style={{ marginTop: 32 }}>
+          {/* Admin uniquement : calculées et rendues côté serveur, jamais pour un client. */}
+          {isAdmin ? (
+            <VideoRecommendations
+              recommendations={buildVideoRecommendations(
+                rankedVideos,
+                new Set((campaignMeta ?? []).filter((c) => c.sync_locked).map((c) => c.campaign_number))
+              )}
+            />
+          ) : null}
           <p style={{ color: muted, fontSize: 12.5, marginBottom: 10 }}>
             Classement des vidéos : toutes périodes confondues (pas de détail journalier par audience/vidéo).
           </p>
@@ -687,7 +759,23 @@ export default async function ComparisonPage({
   const hasBestAppointmentsPerDay = Number.isFinite(bestAppointmentsPerDay)
   const hasBestRealCostPerAppointment = Number.isFinite(bestRealCostPerAppointment)
 
-  const rankedVideos = await computeRankedVideos(supabase, campaigns)
+  const rankedVideos = await computeRankedVideos(supabase, campaigns, isAdmin)
+
+  // Comparateur A/B : mêmes lignes que le tableau ci-dessous (déjà filtrées
+  // published pour un client), aucune valeur recalculée. Leads Meta jamais
+  // transmis pour un compte client.
+  const pairCampaigns: PairCampaign[] = comparisonRows.map((row) => ({
+    id: row.campaign.id,
+    campaignNumber: row.campaign.campaign_number,
+    ongoing: row.campaign.end_date === null,
+    historical: row.campaign.sync_locked,
+    durationDays: row.duration,
+    realAppointments: row.realCount,
+    appointmentsPerDay: row.appointmentsPerDayValue,
+    spend: row.campaign.meta_spend,
+    realCostPerAppointment: row.realCostPerAppt,
+    leads: isAdmin ? row.campaign.meta_pixel_leads : null,
+  }))
 
   return (
     <main style={{ padding: '40px 40px 64px', color: ink }}>
@@ -707,6 +795,8 @@ export default async function ComparisonPage({
               .amerys-card-list { display: flex; }
             }
           `}</style>
+
+          <CampaignPairComparison campaigns={pairCampaigns} aId={pairA} bId={pairB} isAdmin={isAdmin} />
 
           <div style={{ marginTop: 30, marginBottom: 16 }}>
             <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
@@ -847,6 +937,15 @@ export default async function ComparisonPage({
           </div>
 
           <div style={{ marginTop: 32 }}>
+            {/* Admin uniquement : calculées et rendues côté serveur, jamais pour un client. */}
+            {isAdmin ? (
+              <VideoRecommendations
+                recommendations={buildVideoRecommendations(
+                  rankedVideos,
+                  new Set(campaigns.filter((c) => c.sync_locked).map((c) => c.campaign_number))
+                )}
+              />
+            ) : null}
             <VideoRanking videos={rankedVideos} isAdmin={isAdmin} />
           </div>
         </>

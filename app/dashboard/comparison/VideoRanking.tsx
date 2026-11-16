@@ -23,6 +23,22 @@ export type RankedVideo = {
   cplNote: 'shared_audience' | 'no_leads' | 'no_spend' | null
   hookPlay: number | null
   retentionRate: number | null
+  // Détail dépliable : une entrée par audience (campagne + Barbier/Coiffeur)
+  // de la vue courante, mêmes règles de calcul que la ligne principale.
+  occurrences: VideoOccurrenceView[]
+}
+
+// Pour un compte client, totalLeads/costPerLead/cplNote arrivent déjà à null
+// (retirés côté serveur, voir redactForClient dans page.tsx).
+export type VideoOccurrenceView = {
+  key: string
+  campaignNumber: number | null
+  audienceType: 'barbier' | 'coiffeur'
+  totalLeads: number | null
+  costPerLead: number | null
+  cplNote: RankedVideo['cplNote']
+  hookPlay: number | null
+  retentionRate: number | null
 }
 
 export type AudienceFilter = 'all' | 'barbier' | 'coiffeur'
@@ -99,9 +115,160 @@ function SegmentedControl<K extends string>({
   )
 }
 
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <span style={{ fontSize: 12, color: muted, whiteSpace: 'nowrap' }}>
+      {label} <b style={{ color: ink, fontWeight: 600 }}>{value}</b>
+    </span>
+  )
+}
+
+// Détail campagne par campagne (occurrences déjà filtrées par audience côté
+// serveur). Valeur absente -> « — », jamais une valeur inventée. Leads et
+// coût/lead affichés pour l'admin uniquement, comme sur la ligne principale.
+function OccurrenceList({ occurrences, isAdmin }: { occurrences: VideoOccurrenceView[]; isAdmin: boolean }) {
+  const pct = (n: number | null) => (n === null ? '—' : formatPctValue(n))
+  return (
+    <div>
+      <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted, margin: '0 0 6px' }}>
+        Détail par campagne
+      </p>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {occurrences.map((o) => (
+          <li
+            key={o.key}
+            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 14, rowGap: 4, padding: '7px 10px', borderRadius: 10, background: surfaceAlt }}
+          >
+            <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 150 }}>
+              {o.campaignNumber === null ? 'Campagne —' : `Campagne n°${o.campaignNumber}`}{' '}
+              <span style={{ color: audienceColor(o.audienceType) }}>· {o.audienceType === 'barbier' ? 'Barbier' : 'Coiffeur'}</span>
+            </span>
+            <Metric label="Accroche" value={pct(o.hookPlay)} />
+            <Metric label="Rétention" value={pct(o.retentionRate)} />
+            {isAdmin ? <Metric label="Leads Meta" value={o.totalLeads === null ? '—' : String(o.totalLeads)} /> : null}
+            {isAdmin ? (
+              <Metric
+                label="Coût/lead"
+                value={o.cplNote === 'shared_audience' ? 'Non comparable' : o.costPerLead === null ? '—' : formatCostValue(o.costPerLead)}
+              />
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// Ligne du classement dépliable : toute la ligne est un <button>
+// (clavier : Tab + Entrée/Espace natifs), aria-expanded/aria-controls pour
+// les lecteurs d'écran. Mise en forme de la ligne inchangée (même grille).
+function VideoCard({
+  video,
+  rank,
+  rankColor,
+  nameColor,
+  right,
+  dashed,
+  open,
+  onToggle,
+  isAdmin,
+  context,
+}: {
+  video: RankedVideo
+  rank: string
+  rankColor: string
+  nameColor: string
+  right: React.ReactNode
+  dashed: boolean
+  open: boolean
+  onToggle: () => void
+  isAdmin: boolean
+  context: string
+}) {
+  const detailId = `video-detail-${encodeURIComponent(video.identityKey)}`
+  return (
+    <div
+      style={{
+        background: dashed ? surfaceAlt : surface,
+        border: `1px ${dashed ? 'dashed' : 'solid'} ${line}`,
+        borderRadius: radius,
+        overflow: 'hidden',
+      }}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={onToggle}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '26px 1fr auto',
+          gap: 14,
+          alignItems: 'center',
+          width: '100%',
+          padding: '13px 16px',
+          border: 0,
+          background: 'transparent',
+          font: 'inherit',
+          color: 'inherit',
+          textAlign: 'left',
+          cursor: 'pointer',
+        }}
+      >
+        {/* span (pas div) : un <button> n'accepte que du contenu « phrasing ». */}
+        <span
+          style={{
+            display: 'block',
+            fontWeight: rank === '—' ? undefined : 700,
+            fontSize: rank === '—' ? undefined : 17,
+            color: rankColor,
+            textAlign: 'center',
+          }}
+        >
+          {rank}
+        </span>
+        <span style={{ display: 'block' }}>
+          <b style={{ fontSize: 14, display: 'block', color: nameColor }}>{video.displayName}</b>
+          <span style={{ fontSize: 12, color: muted }}>{context}</span>
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ display: 'block', textAlign: 'right' }}>{right}</span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            aria-hidden="true"
+            style={{ color: muted, flexShrink: 0, transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none' }}
+          >
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+      {open ? (
+        <div id={detailId} style={{ borderTop: `1px solid ${line}`, padding: '10px 16px 14px' }}>
+          <OccurrenceList occurrences={video.occurrences} isAdmin={isAdmin} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export default function VideoRanking({ videos: videosByAudience, isAdmin }: { videos: RankedVideosByAudience; isAdmin: boolean }) {
   const [audience, setAudience] = useState<AudienceFilter>('all')
   const videos = videosByAudience[audience]
+  // Vidéos dépliées (par identityKey) : conservées en changeant de filtre,
+  // le détail affichant alors les occurrences de la nouvelle vue.
+  const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set())
+  const toggle = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   // Coût par lead masqué pour un compte client (voir BRIEF-CLAUDE-CODE.md,
   // même règle que "Leads Meta"/"Coût par Lead Meta" ailleurs sur le
   // dashboard) : le critère ne doit jamais pouvoir valoir 'cpl' hors admin.
@@ -173,33 +340,24 @@ export default function VideoRanking({ videos: videosByAudience, isAdmin }: { vi
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {ranked.map((v, i) => (
-            <div
+            <VideoCard
               key={v.identityKey}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '26px 1fr auto',
-                gap: 14,
-                alignItems: 'center',
-                background: surface,
-                border: `1px solid ${line}`,
-                borderRadius: radius,
-                padding: '13px 16px',
-              }}
-            >
-              <div style={{ fontWeight: 700, fontSize: 17, color: i === 0 ? accent : muted, textAlign: 'center' }}>
-                {i + 1}
-              </div>
-              <div>
-                <b style={{ fontSize: 14, display: 'block', color: audienceColor(v.audienceType) }}>
-                  {v.displayName}
-                </b>
-                <span style={{ fontSize: 12, color: muted }}>{contextOf(v)}</span>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <b style={{ fontFamily: 'inherit', fontWeight: 600, fontSize: 19 }}>{formatMetric(v)}</b>
-                <span style={{ fontSize: 11, color: muted, display: 'block' }}>{CRITERION_LABELS[criterion]}</span>
-              </div>
-            </div>
+              video={v}
+              rank={String(i + 1)}
+              rankColor={i === 0 ? accent : muted}
+              nameColor={audienceColor(v.audienceType)}
+              dashed={false}
+              open={openKeys.has(v.identityKey)}
+              onToggle={() => toggle(v.identityKey)}
+              isAdmin={isAdmin}
+              context={contextOf(v)}
+              right={
+                <>
+                  <b style={{ fontFamily: 'inherit', fontWeight: 600, fontSize: 19 }}>{formatMetric(v)}</b>
+                  <span style={{ fontSize: 11, color: muted, display: 'block' }}>{CRITERION_LABELS[criterion]}</span>
+                </>
+              }
+            />
           ))}
 
           {unranked.length > 0 ? (
@@ -208,29 +366,23 @@ export default function VideoRanking({ videos: videosByAudience, isAdmin }: { vi
                 {unranked.length} vidéo{unranked.length > 1 ? 's' : ''} non classable
                 {unranked.length > 1 ? 's' : ''} (métrique non disponible ou non comparable) :
               </p>
-              {unranked.map((v) => (
-                <div
-                  key={v.identityKey}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '26px 1fr auto',
-                    gap: 14,
-                    alignItems: 'center',
-                    background: surfaceAlt,
-                    border: `1px dashed ${line}`,
-                    borderRadius: radius,
-                    padding: '13px 16px',
-                    marginBottom: 8,
-                  }}
-                >
-                  <div style={{ textAlign: 'center', color: muted }}>—</div>
-                  <div>
-                    <b style={{ fontSize: 14, display: 'block', color: ink }}>{v.displayName}</b>
-                    <span style={{ fontSize: 12, color: muted }}>{contextOf(v)}</span>
-                  </div>
-                  <div style={{ textAlign: 'right', color: muted, fontSize: 12.5 }}>{unavailableLabel(v)}</div>
-                </div>
-              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {unranked.map((v) => (
+                  <VideoCard
+                    key={v.identityKey}
+                    video={v}
+                    rank="—"
+                    rankColor={muted}
+                    nameColor={ink}
+                    dashed
+                    open={openKeys.has(v.identityKey)}
+                    onToggle={() => toggle(v.identityKey)}
+                    isAdmin={isAdmin}
+                    context={contextOf(v)}
+                    right={<span style={{ color: muted, fontSize: 12.5 }}>{unavailableLabel(v)}</span>}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
