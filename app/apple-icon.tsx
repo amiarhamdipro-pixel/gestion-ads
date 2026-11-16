@@ -4,8 +4,8 @@ import { ImageResponse } from 'next/og'
 
 // Apple touch icon (écran d'accueil iOS/iPadOS, 180×180 — taille officielle
 // recommandée par Apple). Même source unique que icon.tsx (public/amerys-icon.png,
-// jamais redessiné/recoloré), composée sur le même fond `headerBg` (#1E1B4B,
-// app/dashboard/format.ts) déjà utilisé partout ailleurs derrière ce logo.
+// symbole officiel Amerys Agency, jamais redessiné/recoloré), composée sur un
+// dégradé des violets de la charte (#9560B4 -> #24142D), identique à icon.tsx.
 // Fond OBLIGATOIREMENT opaque (pas de transparence) : iOS ne gère pas la
 // transparence sur cette icône et peut afficher les zones transparentes en
 // noir — contrainte technique documentée par Apple, pas un choix esthétique.
@@ -25,7 +25,7 @@ export default function AppleIcon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#1E1B4B',
+          backgroundImage: 'linear-gradient(135deg, #9560B4 0%, #24142D 100%)',
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- rendu par Satori (next/og), pas le navigateur. */}

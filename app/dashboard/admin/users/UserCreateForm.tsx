@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from 'react'
 import { createUser, type CreateUserState } from './actions'
-import { accent, green, ink, line, muted, red, surface } from '../../format'
+import { ctaBorder, green, ink, line, muted, radiusButton, red, surface } from '../../format'
 
 const initialState: CreateUserState = { status: 'idle' }
 
@@ -12,7 +12,7 @@ const inputStyle: React.CSSProperties = {
   color: ink,
   background: surface,
   border: `1px solid ${line}`,
-  borderRadius: 8,
+  borderRadius: radiusButton,
   padding: '8px 10px',
   width: '100%',
 }
@@ -73,12 +73,13 @@ export default function UserCreateForm({ clients }: { clients: { id: string; nam
         disabled={isPending}
         style={{
           fontSize: 13,
-          fontWeight: 700,
-          color: '#FFFFFF',
-          background: accent,
-          border: 0,
-          borderRadius: 8,
-          padding: '9px 16px',
+          fontWeight: 650,
+          color: ink,
+          background: 'transparent',
+          border: `1px solid ${ctaBorder}`,
+          borderRadius: radiusButton,
+          minHeight: 44,
+          padding: '0 16px',
           cursor: isPending ? 'default' : 'pointer',
           opacity: isPending ? 0.65 : 1,
           height: 'fit-content',

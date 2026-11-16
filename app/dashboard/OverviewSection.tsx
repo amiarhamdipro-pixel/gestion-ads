@@ -132,7 +132,7 @@ export default function OverviewSection({
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes</h2>
+        <h2 style={{ fontWeight: 600, fontSize: 17 }}>Campagnes</h2>
       </div>
 
       {/* Desktop/tablette : tableau complet, avec scroll horizontal en filet de

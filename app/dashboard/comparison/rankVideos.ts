@@ -38,11 +38,15 @@ import type { RankedVideo, RankedVideosByAudience, VideoOccurrenceView } from '.
 //   - accents (décomposition Unicode NFD, marques diacritiques retirées) ;
 //   - espaces multiples ou en bordure ;
 //   - espaces autour de la ponctuation (- _ . , ; : ' ( )) ;
-//   - variantes typographiques d'apostrophe et de tiret.
+//   - variantes typographiques d'apostrophe et de tiret ;
+//   - accent aigu combinant corrompu "╠ü" (U+2560 U+00FC) observé dans des
+//     noms Meta (ex. "vide╠üo") : octets UTF-8 CC 81 de U+0301 relus en
+//     CP437. Rétabli en U+0301, puis retiré comme tout accent ci-dessous.
 // Ne retire jamais un caractère alphanumérique ni une ponctuation : "video 1.2"
 // et "video 12", "video 3" et "video 13" restent distinctes.
 export function videoIdentityKey(name: string): string {
   return name
+    .replace(/\u2560\u00fc/g, '\u0301')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()

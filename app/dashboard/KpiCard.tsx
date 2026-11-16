@@ -1,4 +1,4 @@
-import { ink, line, muted, radius, surface } from './format'
+import { accent, ink, line, muted, radius, radiusButton, surface } from './format'
 
 export default function KpiCard({
   icon,
@@ -16,12 +16,12 @@ export default function KpiCard({
   foot?: string
 }) {
   return (
-    <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 17 }}>
+    <div style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: '20px 20px 18px' }}>
       <div
         style={{
           width: 38,
           height: 38,
-          borderRadius: 11,
+          borderRadius: radiusButton,
           background: iconBg,
           color: iconColor,
           display: 'grid',
@@ -32,17 +32,19 @@ export default function KpiCard({
       </div>
       <div
         style={{
-          marginTop: 11,
+          // Label de la charte : petites capitales espacées, violet, jamais
+          // plus présent que la valeur.
+          marginTop: 14,
           fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '.05em',
+          fontWeight: 600,
+          letterSpacing: '.08em',
           textTransform: 'uppercase',
-          color: muted,
+          color: accent,
         }}
       >
         {label}
       </div>
-      <div style={{ fontWeight: 700, fontSize: 23, marginTop: 3, color: ink }}>{value}</div>
+      <div style={{ fontWeight: 600, fontSize: 26, marginTop: 4, color: ink, letterSpacing: '-.01em', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {foot ? <div style={{ fontSize: 12, color: muted, marginTop: 8 }}>{foot}</div> : null}
     </div>
   )

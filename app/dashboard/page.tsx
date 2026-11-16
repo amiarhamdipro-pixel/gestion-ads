@@ -25,6 +25,7 @@ import {
   line,
   muted,
   radius,
+  red,
   softBg,
   surface,
   surfaceAlt,
@@ -63,7 +64,7 @@ export default async function DashboardPage({
   if (!profile?.client_id) {
     return (
       <main style={{ padding: '40px 40px 64px' }}>
-        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+        <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Vue d&apos;ensemble</h1>
         <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
         <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>
       </main>
@@ -85,9 +86,9 @@ export default async function DashboardPage({
     if (dailyError) {
       return (
         <main style={{ padding: '40px 40px 64px' }}>
-          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Vue d&apos;ensemble</h1>
           <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
-          <p style={{ marginTop: 20, color: '#D93A3A' }}>Impossible de charger les statistiques journalières. Réessayez plus tard.</p>
+          <p style={{ marginTop: 20, color: red }}>Impossible de charger les statistiques journalières. Réessayez plus tard.</p>
         </main>
       )
     }
@@ -117,7 +118,7 @@ export default async function DashboardPage({
     if (dailyRows.length === 0) {
       return (
         <main style={{ padding: '40px 40px 64px' }}>
-          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Vue d&apos;ensemble</h1>
           <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>
             {formatPeriod(resolvedRange.start, resolvedRange.end)}
           </p>
@@ -176,7 +177,7 @@ export default async function DashboardPage({
           }
         `}</style>
 
-        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+        <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Vue d&apos;ensemble</h1>
         <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>{formatPeriod(resolvedRange.start, resolvedRange.end)}</p>
 
         <div
@@ -217,7 +218,7 @@ export default async function DashboardPage({
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes</h2>
+          <h2 style={{ fontWeight: 600, fontSize: 17 }}>Campagnes</h2>
         </div>
 
         <div className="amerys-table-wrap" style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, overflow: 'hidden' }}>
@@ -397,11 +398,11 @@ export default async function DashboardPage({
 
   return (
     <main style={{ padding: '40px 40px 64px' }}>
-      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Vue d&apos;ensemble</h1>
+      <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Vue d&apos;ensemble</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Suivi global des campagnes</p>
 
       {campaignsError ? (
-        <p style={{ marginTop: 20, color: '#D93A3A' }}>
+        <p style={{ marginTop: 20, color: red }}>
           Impossible de charger les campagnes pour le moment. Réessayez plus tard.
         </p>
       ) : campaigns.length === 0 ? (

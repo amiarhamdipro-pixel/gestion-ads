@@ -8,10 +8,10 @@ import { ImageResponse } from 'next/og'
 // et app/AuthShell.tsx — jamais redessiné, jamais recoloré. Ce PNG a un fond
 // transparent et un tracé blanc/quasi-blanc (vérifié pixel par pixel) : sur
 // un fond clair (barre d'onglets en thème clair, aperçus sociaux — presque
-// toujours blancs), il serait invisible. Composé ici sur `headerBg`
-// (#1E1B4B, app/dashboard/format.ts) — exactement le même fond sombre déjà
-// utilisé derrière ce logo partout ailleurs dans l'app (Header.tsx,
-// AuthShell.tsx), jamais une nouvelle couleur inventée.
+// toujours blancs), il serait invisible. Composé ici sur un dégradé des
+// violets de la charte Amerys (#9560B4 -> #24142D) : lisible sur une barre
+// d'onglets claire comme sombre, aucune couleur hors charte. Symbole officiel
+// Amerys Agency (identique au fichier du dépôt AmerysAgency).
 const logoSrc = `data:image/png;base64,${readFileSync(join(process.cwd(), 'public/amerys-icon.png')).toString('base64')}`
 
 export const size = { width: 32, height: 32 }
@@ -27,7 +27,7 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#1E1B4B',
+          backgroundImage: 'linear-gradient(135deg, #9560B4 0%, #24142D 100%)',
           borderRadius: 7,
         }}
       >

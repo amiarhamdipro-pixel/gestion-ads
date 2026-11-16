@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { accent, ink, line, muted, radius, surface, surfaceAlt, violet } from '../format'
+import { accent, ink, lavender, line, muted, radius, radiusButton, surface, surfaceAlt, violet } from '../format'
 
 // displayName est déjà résolu côté serveur (voir computeRankedVideos dans
 // page.tsx : video_display_name -> name -> repli générique, nom exact
@@ -91,7 +91,7 @@ function SegmentedControl<K extends string>({
   label: string
 }) {
   return (
-    <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 3, background: surfaceAlt, border: `1px solid ${line}`, borderRadius: 999, padding: 3 }}>
+    <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 3, background: surfaceAlt, border: `1px solid ${line}`, borderRadius: radiusButton + 3, padding: 3 }}>
       {options.map((opt) => (
         <button
           key={opt.key}
@@ -100,12 +100,14 @@ function SegmentedControl<K extends string>({
           onClick={() => onChange(opt.key)}
           style={{
             border: 0,
-            borderRadius: 999,
-            padding: '5px 12px',
+            borderRadius: radiusButton,
+            minHeight: 34,
+            padding: '0 12px',
             fontSize: 12,
             cursor: 'pointer',
-            background: value === opt.key ? surface : 'transparent',
-            fontWeight: value === opt.key ? 600 : 400,
+            background: value === opt.key ? lavender : 'transparent',
+            color: value === opt.key ? ink : muted,
+            fontWeight: value === opt.key ? 650 : 500,
           }}
         >
           {opt.label}
@@ -137,7 +139,7 @@ function OccurrenceList({ occurrences, isAdmin }: { occurrences: VideoOccurrence
         {occurrences.map((o) => (
           <li
             key={o.key}
-            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 14, rowGap: 4, padding: '7px 10px', borderRadius: 10, background: surfaceAlt }}
+            style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 14, rowGap: 4, padding: '7px 10px', borderRadius: radiusButton, background: surfaceAlt }}
           >
             <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 150 }}>
               {o.campaignNumber === null ? 'Campagne —' : `Campagne n°${o.campaignNumber}`}{' '}
@@ -317,7 +319,7 @@ export default function VideoRanking({ videos: videosByAudience, isAdmin }: { vi
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
-          <h2 style={{ fontWeight: 700, fontSize: 17, margin: 0 }}>Classement des vidéos</h2>
+          <h2 style={{ fontWeight: 600, fontSize: 17, margin: 0 }}>Classement des vidéos</h2>
           <p style={{ color: muted, fontSize: 12.5, margin: '2px 0 0' }}>
             Toutes périodes · {videos.length} vidéo{videos.length > 1 ? 's' : ''} — une vidéo peut revenir sur plusieurs campagnes
           </p>

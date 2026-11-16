@@ -6,17 +6,22 @@
 // app/dashboard/format.ts, aucune couleur inventée.
 
 import { useFormStatus } from 'react-dom'
-import { accent, green, ink, line, muted, onDark, red, softBg, surface } from './dashboard/format'
+import { buttonLight, buttonLightText, green, ink, muted, radiusButton, red, softBg, surface } from './dashboard/format'
 
+// Champs : 44 px minimum (cible tactile de la charte) et 16 px (lisibilité,
+// et pas de zoom automatique de Safari iOS au focus). La bordure n'est PAS
+// posée ici en style inline : elle l'emporterait sur l'état :focus. Elle est
+// portée par la classe .amerys-auth-input (app/globals.css), avec un état
+// focus nettement visible dans les deux thèmes.
 export const authInputStyle: React.CSSProperties = {
   width: '100%',
-  fontSize: 14,
+  minHeight: 44,
+  fontSize: 16,
   fontFamily: 'inherit',
   color: ink,
   background: surface,
-  border: `1px solid ${line}`,
-  borderRadius: 10,
-  padding: '11px 12px 11px 38px',
+  borderRadius: radiusButton,
+  padding: '10px 12px 10px 38px',
 }
 
 export const authLabelStyle: React.CSSProperties = {
@@ -31,11 +36,6 @@ export const authLabelStyle: React.CSSProperties = {
 export function AuthStyles() {
   return (
     <style>{`
-      .amerys-auth-input:focus {
-        outline: none;
-        border-color: ${accent};
-        box-shadow: 0 0 0 3px ${softBg(accent, 0.16)};
-      }
       .amerys-auth-submit:hover:not(:disabled) {
         filter: brightness(1.06);
       }
@@ -55,7 +55,7 @@ export function AuthErrorMessage({ children }: { children: React.ReactNode }) {
         color: red,
         background: softBg(red, 0.1),
         border: `1px solid ${softBg(red, 0.3)}`,
-        borderRadius: 10,
+        borderRadius: radiusButton,
         padding: '10px 12px',
         margin: 0,
       }}
@@ -74,7 +74,7 @@ export function AuthSuccessMessage({ children }: { children: React.ReactNode }) 
         color: green,
         background: softBg(green, 0.1),
         border: `1px solid ${softBg(green, 0.3)}`,
-        borderRadius: 10,
+        borderRadius: radiusButton,
         padding: '10px 12px',
         margin: 0,
       }}
@@ -93,17 +93,19 @@ export function AuthSubmitButton({ idleLabel, pendingLabel }: { idleLabel: strin
       className="amerys-auth-submit"
       style={{
         width: '100%',
+        // Bouton principal de la charte : fond clair, texte aubergine,
+        // rayon 9 px, sans halo lumineux.
         border: 0,
-        borderRadius: 999,
-        padding: '12px 20px',
+        borderRadius: radiusButton,
+        minHeight: 46,
+        padding: '0 20px',
         fontSize: 14,
-        fontWeight: 700,
+        fontWeight: 650,
         fontFamily: 'inherit',
-        color: onDark,
-        background: accent,
+        color: buttonLightText,
+        background: buttonLight,
         cursor: pending ? 'default' : 'pointer',
         opacity: pending ? 0.7 : 1,
-        boxShadow: '0 10px 24px rgba(79, 70, 229, 0.35)',
         marginTop: 6,
       }}
     >

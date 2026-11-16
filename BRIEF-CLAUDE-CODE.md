@@ -1185,3 +1185,63 @@ Fonctionnalités réellement disponibles dans cette version :
 - journal d'audit publication / verrouillage ;
 - amélioration de la gestion du token Meta ;
 - améliorations UX issues des retours utilisateurs.
+
+# IDENTITÉ VISUELLE (refonte charte Amerys Agency)
+
+Décisions visuelles validées. Elles remplacent la palette indigo issue de
+`MAQUETTE-UI.png` : la maquette `dashboard-maquette_1.html` reste la
+référence de STRUCTURE métier (vues, KPI, graphiques, tableaux), la charte
+`Charte_graphique_Amerys_ADS.pdf` est la référence d'IDENTITÉ.
+
+- **Thème nuit par défaut** : variables exactes de la charte (`--amerys-*`
+  dans `app/globals.css`) — fond `#09070E`, section `#100B16`, cartes
+  `#15101B`, surface élevée `#17101E`, textes `#F5F0F8` / `#DDD2E2` /
+  `#A99FAE`, violet `#C78FE5` / `#D59CF0` / `#9560B4`, bouton clair
+  `#F1E7F7` + texte `#24142D`, bordure CTA `#A872CA`, bordure de carte
+  `rgba(255,255,255,.094)`.
+- **Thème clair optionnel** (palette de l'audit) : fond `#F7F3FA`, section
+  `#F1EAF6`, cartes `#FFFFFF`, élevée `#FBF8FD`, textes `#1B1222` /
+  `#4A3D55` / `#6E6378`, accent `#7A45A0`, accent profond `#9560B4`, bouton
+  principal inversé (`#24142D` + texte `#F1E7F7`). Statuts assombris en clair
+  pour garder ≥ 4,5:1 : succès `#047857`, attention `#B45309`, erreur
+  `#B91C1C`.
+- **Bandeau d'en-tête sombre dans les deux thèmes** (`#100B16` nuit,
+  `#24142D` clair) : le logo, `public/amerys-icon.png`, est un tracé blanc
+  jamais recoloré.
+- **Logo** : `public/amerys-icon.png` est le symbole OFFICIEL Amerys Agency —
+  fichier identique octet pour octet à `logo/amerys-icone.png` du projet
+  Amerys Agency, même symbole que les icônes du dépôt AmerysAgency
+  (`src/app/icon.png`). Aucun monogramme « A » distinct n'existe dans les
+  assets locaux : aucun logo de substitution créé. Présenté dans un cercle
+  (symbole circulaire de la charte).
+- **Nom affiché** : « AMERYS ADS » partout (en-tête, connexion, titre
+  d'onglet, aperçus de partage).
+- **Favicon / icône Apple** : symbole officiel sur dégradé des violets de la
+  charte `#9560B4` → `#24142D`. **Aperçu de partage** : fond `#09070E`, halo
+  violet diffus, symbole dans un cercle `#100B16`, textes `#F5F0F8` /
+  `#DDD2E2`. `app/favicon.ico` (fichier statique historique) non régénéré.
+- **Connexion** : champs 44 px / 16 px, bordure portée par la classe
+  `.amerys-auth-input` (`app/globals.css`) pour un focus violet visible
+  (contour 2 px + bordure) dans les deux thèmes ; bouton afficher/masquer et
+  lien « Mot de passe oublié ? » à 44 px de cible.
+- **Bascule clair/nuit** : `app/dashboard/ThemeToggle.tsx` (en-tête),
+  attribut `data-theme` sur `<html>`, préférence dans `localStorage`
+  (`ads-theme`), appliquée avant le premier rendu par un script inline de
+  `app/layout.tsx` (aucune CSP définie) : pas de flash.
+- **Règle de code** : aucune couleur en dur dans un composant ; toutes les
+  couleurs passent par `app/dashboard/format.ts`, qui exporte des
+  `var(--…)`. `softBg()` utilise `color-mix()`. Couleurs SVG via `style`
+  (jamais en attribut `fill=`/`stroke=`). Exceptions documentées : couleurs
+  de marque Facebook/Instagram, `app/global-error.tsx` (autonome, valeurs de
+  la charte nuit) et images générées par `next/og` (icônes, aperçus).
+- **Composants** : Geist partout ; cartes rayon 18 px ; boutons rayon 9 px,
+  44 px de haut ; bouton principal = fond clair (en-tête, connexion) ou
+  transparent + bordure CTA (actions de page) ; secondaire = fond discret +
+  bordure transparente ; labels en petites capitales violettes ; état actif
+  de navigation = fond violet très discret + filet violet.
+- **Graphiques** : barres RDV en violet profond `#9560B4`, courbe dépensé en
+  `#DDD2E2` (nuit) / `#24142D` (clair) — séries distinguées par teinte,
+  luminosité et forme. Donuts : rotation qui sépare toujours deux violets.
+- **Accessibilité** : `:focus-visible` violet, transitions 150 ms,
+  `prefers-reduced-motion` respecté, contrastes texte ≥ 4,5:1 vérifiés sur
+  les deux thèmes.

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { accent, green, muted, red } from './format'
+import { borderStrong, ctaBorder, green, ink, muted, radiusButton, red, surfaceAlt } from './format'
 
 type Props = {
   campaignId: string
@@ -71,13 +71,18 @@ export default function PublishToggle({ campaignId, initialPublished }: Props) {
         onClick={handleToggle}
         disabled={isSaving}
         style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: published ? muted : '#FFFFFF',
-          background: published ? 'transparent' : accent,
-          border: published ? `1px solid ${muted}` : 0,
-          borderRadius: 8,
-          padding: '5px 11px',
+          // Boutons de la charte : « Publier » = bouton principal sur fond
+          // sombre (transparent, bordure CTA) ; « Dépublier » = bouton
+          // secondaire (fond discret, bordure blanche transparente) — jamais
+          // d'apparence désactivée.
+          fontSize: 13,
+          fontWeight: 650,
+          color: ink,
+          background: published ? surfaceAlt : 'transparent',
+          border: `1px solid ${published ? borderStrong : ctaBorder}`,
+          borderRadius: radiusButton,
+          minHeight: 44,
+          padding: '0 16px',
           cursor: isSaving ? 'default' : 'pointer',
           opacity: isSaving ? 0.65 : 1,
         }}

@@ -1,4 +1,4 @@
-import { accent, amber, formatCost, formatEur, gray, indigo, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
+import { accent, amber, ctaBorder, formatCost, formatEur, gray, ink, line, muted, radius, radiusButton, softBg, surface, surfaceAlt } from '../format'
 
 // Comparateur A/B de deux campagnes (page Comparaison, mode sans filtre de
 // période uniquement : durée complète de chaque campagne, jamais la période
@@ -148,9 +148,9 @@ export default function CampaignPairComparison({
 }) {
   const comparison = buildPairComparison(campaigns, aId, bId)
   const selectStyle: React.CSSProperties = {
-    height: 38,
+    height: 44,
     padding: '0 10px',
-    borderRadius: 10,
+    borderRadius: radiusButton,
     border: `1px solid ${line}`,
     background: surface,
     color: ink,
@@ -177,7 +177,7 @@ export default function CampaignPairComparison({
 
   return (
     <section style={{ marginTop: 30, background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 18 }}>
-      <h2 style={{ fontWeight: 700, fontSize: 17 }}>Comparer deux campagnes</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 17 }}>Comparer deux campagnes</h2>
       <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
         Durée complète de chaque campagne · écart = A − B (en % de B)
       </p>
@@ -210,7 +210,7 @@ export default function CampaignPairComparison({
           </label>
           <button
             type="submit"
-            style={{ height: 38, padding: '0 18px', borderRadius: 999, border: 0, background: indigo, color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            style={{ height: 44, padding: '0 18px', borderRadius: radiusButton, border: `1px solid ${ctaBorder}`, background: 'transparent', color: ink, fontSize: 13, fontWeight: 650, cursor: 'pointer' }}
           >
             Comparer
           </button>

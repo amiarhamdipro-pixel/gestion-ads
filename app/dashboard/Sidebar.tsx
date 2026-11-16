@@ -9,7 +9,20 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { logout } from './actions'
-import { accent, getMobileMenuOpen, ink, line, muted, setMobileMenuOpen, subscribeMobileMenu, surface } from './format'
+import {
+  accent,
+  buttonLight,
+  buttonLightText,
+  getMobileMenuOpen,
+  ink,
+  lavender,
+  line,
+  muted,
+  radiusButton,
+  section,
+  setMobileMenuOpen,
+  subscribeMobileMenu,
+} from './format'
 import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, SyncIcon, UserIcon } from './icons'
 
 function initials(name: string): string {
@@ -80,7 +93,7 @@ export default function Sidebar({
       style={{
         width: 220,
         flexShrink: 0,
-        background: surface,
+        background: section,
         borderRight: `1px solid ${line}`,
         minHeight: 'calc(100vh - 73px)',
         display: 'flex',
@@ -104,11 +117,11 @@ export default function Sidebar({
           alignSelf: 'flex-end',
           alignItems: 'center',
           justifyContent: 'center',
-          // 40px : proche du seuil de 44px recommandé pour une cible tactile
-          // (bouton dédié fermeture, ouvert uniquement sur mobile/tablette).
-          width: 40,
-          height: 40,
-          borderRadius: 10,
+          // 44px : cible tactile minimale de la charte (bouton dédié
+          // fermeture, ouvert uniquement sur mobile/tablette).
+          width: 44,
+          height: 44,
+          borderRadius: radiusButton,
           border: `1px solid ${line}`,
           background: 'transparent',
           padding: 0,
@@ -132,6 +145,7 @@ export default function Sidebar({
               key={item.href}
               href={query ? `${item.href}?${query}` : item.href}
               onClick={closeMenu}
+              aria-current={active ? 'page' : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -140,12 +154,15 @@ export default function Sidebar({
                 // plus confortable au doigt qu'au pointeur souris, sans rien
                 // changer visuellement au-delà de la hauteur de la ligne.
                 padding: '13px 12px',
-                borderRadius: 10,
+                borderRadius: radiusButton,
                 fontSize: 13.5,
                 fontWeight: active ? 600 : 500,
                 textDecoration: 'none',
-                background: active ? accent : 'transparent',
-                color: active ? '#FFFFFF' : ink,
+                // État actif de la charte : fond violet très discret + filet
+                // violet à gauche, texte principal (jamais d'aplat saturé).
+                background: active ? lavender : 'transparent',
+                boxShadow: active ? `inset 3px 0 0 ${accent}` : 'none',
+                color: active ? ink : muted,
               }}
             >
               <Icon size={17} />
@@ -163,7 +180,8 @@ export default function Sidebar({
               alignItems: 'center',
               gap: 10,
               padding: '8px 10px',
-              borderRadius: 10,
+              minHeight: 44,
+              borderRadius: radiusButton,
               cursor: 'pointer',
               listStyle: 'none',
             }}
@@ -173,8 +191,8 @@ export default function Sidebar({
                 width: 32,
                 height: 32,
                 borderRadius: '50%',
-                background: accent,
-                color: '#FFFFFF',
+                background: buttonLight,
+                color: buttonLightText,
                 fontSize: 12.5,
                 fontWeight: 700,
                 display: 'grid',
@@ -208,7 +226,8 @@ export default function Sidebar({
                 fontSize: 13,
                 fontWeight: 500,
                 padding: '8px 10px',
-                borderRadius: 10,
+                minHeight: 44,
+                borderRadius: radiusButton,
                 cursor: 'pointer',
               }}
             >

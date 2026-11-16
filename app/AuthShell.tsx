@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import { accent, headerBg, ink, line, muted, radius, surface } from './dashboard/format'
+import { fullscreenBg, headerBg, ink, line, muted, radius, shadow, surface } from './dashboard/format'
 
 // Habillage partagé par /login, /forgot-password et /update-password : même
 // carte, même arrière-plan, même bloc logo — un seul endroit à faire
@@ -21,7 +21,7 @@ export default function AuthShell({
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
-        background: `linear-gradient(135deg, ${headerBg} 0%, ${accent} 140%)`,
+        background: fullscreenBg,
       }}
     >
       <div
@@ -31,7 +31,7 @@ export default function AuthShell({
           background: surface,
           borderRadius: radius,
           border: `1px solid ${line}`,
-          boxShadow: '0 24px 60px rgba(15, 16, 30, 0.35)',
+          boxShadow: shadow,
           padding: '40px 32px',
         }}
       >
@@ -40,7 +40,8 @@ export default function AuthShell({
             style={{
               width: 56,
               height: 56,
-              borderRadius: 14,
+              // Symbole circulaire de la charte (logo officiel, tracé blanc).
+              borderRadius: '50%',
               background: headerBg,
               display: 'grid',
               placeItems: 'center',
@@ -50,12 +51,12 @@ export default function AuthShell({
             <Image src="/amerys-icon.png" alt="Amerys" width={32} height={28} style={{ display: 'block' }} />
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 19, color: ink, letterSpacing: '.01em' }}>AMERYS ADS</div>
+            <div style={{ fontWeight: 650, fontSize: 19, color: ink, letterSpacing: '.02em' }}>AMERYS ADS</div>
             <div style={{ fontSize: 12.5, color: muted, marginTop: 2 }}>Marketing Dashboard</div>
           </div>
         </div>
 
-        <h1 style={{ fontWeight: 700, fontSize: 20, color: ink, textAlign: 'center', margin: 0 }}>{title}</h1>
+        <h1 style={{ fontWeight: 600, fontSize: 20, color: ink, textAlign: 'center', margin: 0 }}>{title}</h1>
         <p style={{ fontSize: 13, color: muted, textAlign: 'center', marginTop: 4, marginBottom: 26 }}>{subtitle}</p>
 
         {children}

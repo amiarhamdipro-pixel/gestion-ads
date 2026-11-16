@@ -1,13 +1,96 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Thèmes AMERYS ADS ─────────────────────────────────────────────────────
+   Nuit (défaut) : variables EXACTES de la charte Amerys Agency
+   (Charte_graphique_Amerys_ADS.pdf, §10). Clair : palette validée lors de
+   l'audit visuel (même famille aubergine/violet, contrastes WCAG vérifiés).
+   Le thème actif est porté par <html data-theme="dark|light"> (app/layout.tsx,
+   script anti-flash + app/dashboard/ThemeToggle.tsx). Les composants n'utilisent
+   jamais ces valeurs directement : ils passent par app/dashboard/format.ts. */
+
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --amerys-bg: #09070e;
+  --amerys-section: #100b16;
+  --amerys-surface: #15101b;
+  --amerys-surface-elevated: #17101e;
+  --amerys-text: #f5f0f8;
+  --amerys-text-soft: #ddd2e2;
+  --amerys-text-muted: #a99fae;
+  --amerys-accent: #c78fe5;
+  --amerys-accent-light: #d59cf0;
+  --amerys-accent-deep: #9560b4;
+  --amerys-button-light: #f1e7f7;
+  --amerys-button-text: #24142d;
+  --amerys-cta-border: #a872ca;
+  --amerys-card-border: rgba(255, 255, 255, 0.094);
+  --amerys-radius-button: 9px;
+  --amerys-radius-card: 18px;
+
+  /* Dérivés applicatifs (transparences de référence de la charte, §2) */
+  --ads-surface-alt: rgba(255, 255, 255, 0.04);
+  --ads-border-strong: rgba(255, 255, 255, 0.2);
+  --ads-accent-soft: rgba(199, 143, 229, 0.14);
+  --ads-on-accent: #24142d;
+  --ads-header-bg: #100b16;
+  --ads-on-dark: #f5f0f8;
+  --ads-on-dark-muted: rgba(245, 240, 248, 0.68);
+  --ads-on-dark-line: rgba(255, 255, 255, 0.12);
+  --ads-on-dark-fill: rgba(255, 255, 255, 0.08);
+  /* Bouton principal POSÉ SUR LE BANDEAU : bandeau sombre dans les deux
+     thèmes, donc bouton clair de la charte dans les deux thèmes (jamais
+     redéfini par [data-theme='light']). */
+  --ads-header-button: #f1e7f7;
+  --ads-header-button-text: #24142d;
+  --ads-success: #10b981;
+  --ads-warning: #f59e0b;
+  --ads-danger: #ef4444;
+  --ads-neutral: #a99fae;
+  --ads-chart-bars: #9560b4;
+  --ads-chart-line: #ddd2e2;
+  --ads-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+  --ads-overlay: rgba(9, 7, 14, 0.62);
+  --ads-thumb-overlay: rgba(9, 7, 14, 0.55);
+  --ads-halo: rgba(155, 102, 186, 0.07);
+  --ads-halo-strong: rgba(155, 102, 186, 0.18);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme='light'] {
+  color-scheme: light;
+
+  --amerys-bg: #f7f3fa;
+  --amerys-section: #f1eaf6;
+  --amerys-surface: #ffffff;
+  --amerys-surface-elevated: #fbf8fd;
+  --amerys-text: #1b1222;
+  --amerys-text-soft: #4a3d55;
+  --amerys-text-muted: #6e6378;
+  --amerys-accent: #7a45a0;
+  --amerys-accent-light: #9560b4;
+  --amerys-accent-deep: #9560b4;
+  --amerys-button-light: #24142d;
+  --amerys-button-text: #f1e7f7;
+  --amerys-cta-border: #9560b4;
+  --amerys-card-border: rgba(36, 20, 45, 0.1);
+
+  --ads-surface-alt: #f1eaf6;
+  --ads-border-strong: rgba(36, 20, 45, 0.22);
+  --ads-accent-soft: #f1e7f7;
+  --ads-on-accent: #ffffff;
+  /* Bandeau d'en-tête sombre dans les deux thèmes : le logo officiel
+     (public/amerys-icon.png) est un tracé blanc, jamais recoloré. */
+  --ads-header-bg: #24142d;
+  --ads-success: #047857;
+  --ads-warning: #b45309;
+  --ads-danger: #b91c1c;
+  --ads-neutral: #6e6378;
+  --ads-chart-bars: #9560b4;
+  --ads-chart-line: #24142d;
+  --ads-shadow: 0 14px 32px -22px rgba(36, 20, 45, 0.35);
+  --ads-overlay: rgba(27, 18, 34, 0.42);
+  --ads-thumb-overlay: rgba(27, 18, 34, 0.5);
+  --ads-halo: rgba(149, 96, 180, 0.08);
+  --ads-halo-strong: rgba(149, 96, 180, 0.16);
 }
 
 html {
@@ -24,9 +107,9 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--amerys-text);
+  background: var(--amerys-bg);
+  font-family: var(--font-geist-sans), Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -43,16 +126,92 @@ a {
 }
 
 /* Contrairement aux autres éléments, <button> n'hérite pas color par défaut
-   (couleur système côté navigateur) : tout bouton du dashboard qui ne fixe
-   pas sa propre couleur devenait quasi invisible en dark mode (texte
-   quasi-blanc du body sur un fond de bouton clair) — ex. bascules
-   Totaux/Par jour, Meilleur coût par lead/Meilleur taux d'accroche. */
-button {
+   (couleur système côté navigateur) : tout bouton qui ne fixe pas sa propre
+   couleur deviendrait illisible sur fond sombre. */
+button,
+input,
+select,
+textarea {
   color: inherit;
+  font-family: inherit;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/* Transitions courtes de la charte (§7 : 150 ms, interactions simples). */
+a,
+button,
+input,
+select,
+textarea,
+summary {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+
+/* Focus clavier visible sur tous les éléments interactifs (charte §9). */
+:focus-visible {
+  outline: 2px solid var(--amerys-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--ads-accent-soft);
+}
+
+/* ─── Écrans de connexion (app/auth-ui.tsx, LoginForm, UpdatePasswordForm,
+   ForgotPasswordForm) ──────────────────────────────────────────────────────
+   Bordure portée par la classe (et non en style inline) pour que l'état focus
+   puisse la remplacer : contour violet 2 px décalé + bordure violette,
+   nettement visible dans les deux thèmes (≥ 6:1 sur le fond). */
+.amerys-auth-input {
+  border: 1px solid var(--amerys-card-border);
+}
+
+.amerys-auth-input::placeholder {
+  color: var(--amerys-text-muted);
+  opacity: 1;
+}
+
+.amerys-auth-input:focus {
+  border-color: var(--amerys-accent);
+  outline: 2px solid var(--amerys-accent);
+  outline-offset: 2px;
+}
+
+/* Bouton afficher/masquer le mot de passe : cible tactile 44 × 44 px (styles
+   inline des formulaires, d'où !important), et le champ laisse la place
+   nécessaire au bouton. */
+.amerys-auth-toggle {
+  width: 44px !important;
+  height: 44px !important;
+  right: 0 !important;
+  border-radius: var(--amerys-radius-button) !important;
+}
+
+.amerys-auth-input:has(+ .amerys-auth-toggle) {
+  padding-right: 46px !important;
+}
+
+/* Lien « Mot de passe oublié ? » : zone cliquable de 44 px de haut sans
+   changer sa taille de texte. */
+a[href='/forgot-password'] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

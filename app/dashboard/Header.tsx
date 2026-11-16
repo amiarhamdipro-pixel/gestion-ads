@@ -13,14 +13,17 @@ import {
   getMobileMenuOpen,
   headerBg,
   onDark,
+  onDarkFill,
   onDarkLine,
   onDarkMuted,
+  radiusButton,
   setMobileMenuOpen,
   subscribeMobileMenu,
 } from './format'
 import { ClockIcon, CrownIcon, UserIcon } from './icons'
 import SyncButton from './SyncButton'
 import DashboardDateFilter from './DashboardDateFilter'
+import ThemeToggle from './ThemeToggle'
 
 const roleLabel: Record<string, string> = {
   admin: 'Admin',
@@ -31,7 +34,8 @@ const pillStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 7,
-  background: 'rgba(255, 255, 255, 0.08)',
+  background: onDarkFill,
+  border: `1px solid ${onDarkLine}`,
   borderRadius: 999,
   padding: '7px 14px',
   fontSize: 12.5,
@@ -90,11 +94,12 @@ export default function Header({
             style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 38,
-              height: 38,
-              borderRadius: 10,
-              background: 'rgba(255, 255, 255, 0.1)',
-              border: 0,
+              width: 44,
+              height: 44,
+              borderRadius: radiusButton,
+              background: onDarkFill,
+              border: `1px solid ${onDarkLine}`,
+              color: onDark,
               padding: 0,
               font: 'inherit',
               cursor: 'pointer',
@@ -102,7 +107,7 @@ export default function Header({
             }}
           >
             <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
-              <path d="M1 1h16M1 7h16M1 13h16" stroke={onDark} strokeWidth={1.8} strokeLinecap="round" />
+              <path d="M1 1h16M1 7h16M1 13h16" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
             </svg>
           </button>
 
@@ -110,8 +115,9 @@ export default function Header({
             style={{
               width: 46,
               height: 46,
-              borderRadius: 12,
-              background: 'rgba(255, 255, 255, 0.12)',
+              borderRadius: '50%',
+              background: onDarkFill,
+              border: `1px solid ${onDarkLine}`,
               display: 'grid',
               placeItems: 'center',
               flexShrink: 0,
@@ -120,8 +126,8 @@ export default function Header({
             <Image src="/amerys-icon.png" alt="Amerys" width={28} height={24} style={{ display: 'block' }} />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16, color: onDark, letterSpacing: '.01em', lineHeight: 1.15 }}>
-              AMERYS AGENCY – ADS
+            <div style={{ fontWeight: 650, fontSize: 16, color: onDark, letterSpacing: '.02em', lineHeight: 1.15 }}>
+              AMERYS ADS
             </div>
             <div style={{ fontSize: 11.5, color: onDarkMuted, marginTop: 1 }}>Marketing Dashboard</div>
           </div>
@@ -142,6 +148,8 @@ export default function Header({
           ) : null}
 
           {isAdmin ? <SyncButton /> : null}
+
+          <ThemeToggle />
 
           {isAdmin ? (
             <>

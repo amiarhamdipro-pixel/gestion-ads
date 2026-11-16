@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 // sans ça, les robots de partage (WhatsApp, LinkedIn, Facebook, iMessage...)
 // reçoivent une URL relative invalide et n'affichent aucun aperçu.
 const SITE_URL = "https://ads.amerys-agency.com";
-const APP_NAME = "AMERYS AGENCY – ADS";
+const APP_NAME = "AMERYS ADS";
 const APP_DESCRIPTION = "Suivi des campagnes publicitaires Amerys Agency.";
 
 export const metadata: Metadata = {
@@ -40,13 +40,29 @@ export const metadata: Metadata = {
   },
 };
 
+// Thème nuit par défaut (data-theme="dark" rendu côté serveur). Préférence
+// claire mémorisée dans localStorage ('ads-theme', voir
+// app/dashboard/ThemeToggle.tsx) et appliquée par ce script AVANT le premier
+// rendu : aucun flash de thème. Script inline compatible : aucune CSP n'est
+// définie (next.config.ts). suppressHydrationWarning : l'attribut data-theme
+// peut légitimement différer du HTML serveur après ce script.
+const THEME_SCRIPT = `try{var t=localStorage.getItem('ads-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang="fr"
+      data-theme="dark"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>{children}</body>
     </html>
   );

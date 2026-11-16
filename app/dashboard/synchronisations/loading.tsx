@@ -5,7 +5,7 @@ import { line, muted, radius, surface } from '../format'
 export default function SynchronisationsLoading() {
   return (
     <main style={{ padding: '40px 40px 64px' }}>
-      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Synchronisations</h1>
+      <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Synchronisations</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Historique des synchronisations manuelles Meta + Calendly</p>
       <div
         role="status"

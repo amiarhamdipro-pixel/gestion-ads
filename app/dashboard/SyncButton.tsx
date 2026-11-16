@@ -2,7 +2,23 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { accent, amber, gray, green, ink, line, muted, onDark, radius, red, softBg, surface } from './format'
+import {
+  accent,
+  amber,
+  gray,
+  green,
+  headerButton,
+  headerButtonText,
+  ink,
+  line,
+  muted,
+  radius,
+  radiusButton,
+  red,
+  shadow,
+  softBg,
+  surfaceElevated,
+} from './format'
 import { SyncIcon } from './icons'
 import type { SyncAllReport } from '../api/admin/sync/all/route'
 
@@ -102,11 +118,11 @@ function ReportCard({ outcome, report, message, onClose }: { outcome: Outcome; r
         top: '100%',
         marginTop: 8,
         width: 300,
-        background: surface,
+        background: surfaceElevated,
         color: ink,
         border: `1px solid ${line}`,
         borderRadius: radius,
-        boxShadow: '0 12px 32px rgba(15, 16, 30, 0.18)',
+        boxShadow: shadow,
         padding: 14,
         fontSize: 12.5,
         zIndex: 5,
@@ -124,7 +140,7 @@ function ReportCard({ outcome, report, message, onClose }: { outcome: Outcome; r
           type="button"
           onClick={onClose}
           aria-label="Fermer le rapport"
-          style={{ border: 0, background: 'transparent', color: muted, cursor: 'pointer', padding: 4, lineHeight: 0 }}
+          style={{ border: 0, background: 'transparent', color: muted, cursor: 'pointer', padding: 8, margin: -4, lineHeight: 0, borderRadius: radiusButton }}
         >
           <svg width="12" height="12" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
@@ -154,12 +170,12 @@ function ReportCard({ outcome, report, message, onClose }: { outcome: Outcome; r
       ) : null}
 
       {message || issues.length > 0 ? (
-        <p style={{ marginTop: 8, padding: '8px 10px', borderRadius: 10, background: softBg(outcome === 'failed' ? red : amber, 0.1) }}>
+        <p style={{ marginTop: 8, padding: '8px 10px', borderRadius: radiusButton, background: softBg(outcome === 'failed' ? red : amber, 0.1) }}>
           {message ?? `À vérifier : ${issues.join(', ')}.`}
         </p>
       ) : null}
 
-      <Link href="/dashboard/synchronisations" style={{ display: 'inline-block', marginTop: 10, color: accent, fontWeight: 700, textDecoration: 'none' }}>
+      <Link href="/dashboard/synchronisations" style={{ display: 'inline-block', marginTop: 10, color: accent, fontWeight: 650, textDecoration: 'none' }}>
         Voir l’historique →
       </Link>
     </div>
@@ -235,16 +251,18 @@ export default function SyncButton() {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
+          // Bouton principal du header de la charte : fond clair, texte
+          // aubergine, rayon 9 px, 13 px / graisse 650, hauteur 44 px.
           border: 0,
-          borderRadius: 999,
-          padding: '11px 22px',
-          fontSize: 13.5,
-          fontWeight: 700,
+          borderRadius: radiusButton,
+          minHeight: 44,
+          padding: '0 20px',
+          fontSize: 13,
+          fontWeight: 650,
           cursor: isSyncing ? 'default' : 'pointer',
-          background: accent,
-          color: onDark,
+          background: headerButton,
+          color: headerButtonText,
           opacity: isSyncing ? 0.7 : 1,
-          boxShadow: '0 4px 14px rgba(79, 70, 229, 0.45)',
         }}
       >
         <SyncIcon size={16} />

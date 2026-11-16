@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { campaignDurationDays } from '@/lib/calculations'
-import { accent, green, ink, line, red, surface } from './format'
+import { ctaBorder, green, ink, line, radiusButton, red, surface } from './format'
 
 type Props = {
   campaignId: string
@@ -63,8 +63,9 @@ export default function EndDateEditor({ campaignId, startDate, initialEndDate }:
           color: ink,
           background: surface,
           border: `1px solid ${line}`,
-          borderRadius: 8,
-          padding: '5px 8px',
+          borderRadius: radiusButton,
+          minHeight: 44,
+          padding: '0 10px',
         }}
       />
       <button
@@ -72,13 +73,16 @@ export default function EndDateEditor({ campaignId, startDate, initialEndDate }:
         onClick={handleSave}
         disabled={isSaving}
         style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: '#FFFFFF',
-          background: accent,
-          border: 0,
-          borderRadius: 8,
-          padding: '6px 12px',
+          // Bouton principal de la charte sur fond sombre : transparent,
+          // bordure CTA, texte principal.
+          fontSize: 13,
+          fontWeight: 650,
+          color: ink,
+          background: 'transparent',
+          border: `1px solid ${ctaBorder}`,
+          borderRadius: radiusButton,
+          minHeight: 44,
+          padding: '0 16px',
           cursor: isSaving ? 'default' : 'pointer',
           opacity: isSaving ? 0.65 : 1,
         }}

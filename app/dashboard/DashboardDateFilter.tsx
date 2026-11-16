@@ -11,7 +11,24 @@
 import { useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { isDateRangePreset, type DateRangePreset } from '@/lib/calculations'
-import { accent, formatPeriod, ink, line, muted, onDark, radius, surface } from './format'
+import {
+  accent,
+  buttonLight,
+  buttonLightText,
+  formatPeriod,
+  ink,
+  lavender,
+  line,
+  muted,
+  onDark,
+  onDarkFill,
+  onDarkLine,
+  radius,
+  radiusButton,
+  shadow,
+  surface,
+  surfaceElevated,
+} from './format'
 import { CalendarIcon, ChevronDownIcon } from './icons'
 
 const OPTIONS: { value: DateRangePreset; label: string }[] = [
@@ -93,7 +110,8 @@ export default function DashboardDateFilter() {
           display: 'flex',
           alignItems: 'center',
           gap: 7,
-          background: 'rgba(255, 255, 255, 0.08)',
+          background: onDarkFill,
+          border: `1px solid ${onDarkLine}`,
           borderRadius: 999,
           padding: '7px 14px',
           fontSize: 12.5,
@@ -115,11 +133,11 @@ export default function DashboardDateFilter() {
           right: 0,
           zIndex: 10,
           width: 250,
-          background: surface,
+          background: surfaceElevated,
           border: `1px solid ${line}`,
           borderRadius: radius,
           padding: 10,
-          boxShadow: '0 16px 32px rgba(15, 16, 30, 0.2)',
+          boxShadow: shadow,
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -133,12 +151,12 @@ export default function DashboardDateFilter() {
                 style={{
                   textAlign: 'left',
                   border: 0,
-                  borderRadius: 8,
+                  borderRadius: radiusButton,
                   padding: '8px 10px',
                   fontSize: 13,
-                  fontWeight: active ? 700 : 500,
+                  fontWeight: active ? 650 : 500,
                   color: active ? accent : ink,
-                  background: active ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
+                  background: active ? lavender : 'transparent',
                   cursor: 'pointer',
                 }}
               >
@@ -157,7 +175,7 @@ export default function DashboardDateFilter() {
                 value={customStart}
                 max={customEnd || undefined}
                 onChange={(e) => setCustomStart(e.target.value)}
-                style={{ fontSize: 12.5, fontFamily: 'inherit', color: ink, background: surface, border: `1px solid ${line}`, borderRadius: 8, padding: '6px 8px' }}
+                style={{ fontSize: 12.5, fontFamily: 'inherit', color: ink, background: surface, border: `1px solid ${line}`, borderRadius: radiusButton, padding: '6px 8px' }}
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11.5, color: muted }}>
@@ -167,7 +185,7 @@ export default function DashboardDateFilter() {
                 value={customEnd}
                 min={customStart || undefined}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                style={{ fontSize: 12.5, fontFamily: 'inherit', color: ink, background: surface, border: `1px solid ${line}`, borderRadius: 8, padding: '6px 8px' }}
+                style={{ fontSize: 12.5, fontFamily: 'inherit', color: ink, background: surface, border: `1px solid ${line}`, borderRadius: radiusButton, padding: '6px 8px' }}
               />
             </label>
             <button
@@ -176,11 +194,11 @@ export default function DashboardDateFilter() {
               disabled={!customStart || !customEnd}
               style={{
                 fontSize: 12.5,
-                fontWeight: 700,
-                color: '#FFFFFF',
-                background: accent,
+                fontWeight: 650,
+                color: buttonLightText,
+                background: buttonLight,
                 border: 0,
-                borderRadius: 8,
+                borderRadius: radiusButton,
                 padding: '7px 10px',
                 cursor: !customStart || !customEnd ? 'default' : 'pointer',
                 opacity: !customStart || !customEnd ? 0.55 : 1,

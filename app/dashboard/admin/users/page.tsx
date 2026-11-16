@@ -65,7 +65,7 @@ export default async function AdminUsersPage() {
         }
       `}</style>
 
-      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Utilisateurs</h1>
+      <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Utilisateurs</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Administration des comptes</p>
 
       <div
@@ -78,11 +78,11 @@ export default async function AdminUsersPage() {
           padding: 20,
         }}
       >
-        <h2 style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Créer un utilisateur</h2>
+        <h2 style={{ fontWeight: 600, fontSize: 15, marginBottom: 14 }}>Créer un utilisateur</h2>
         <UserCreateForm clients={clients} />
       </div>
 
-      <h2 style={{ fontWeight: 700, fontSize: 17, marginBottom: 16 }}>Comptes existants</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 17, marginBottom: 16 }}>Comptes existants</h2>
 
       <div
         className="amerys-table-wrap"

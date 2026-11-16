@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { parisDateToUtcMs } from '@/lib/calculations'
-import { amber, gray, green, indigo, ink, line, muted, radius, red, softBg, surface, surfaceAlt } from '../format'
+import { accent, amber, ctaBorder, gray, green, indigo, ink, line, muted, radius, radiusButton, red, softBg, surface, surfaceAlt } from '../format'
 import {
   PAGE_SIZE,
   STALE_RUNNING_MS,
@@ -102,7 +102,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ background: surfaceAlt, borderRadius: 12, padding: '12px 14px' }}>
-      <h3 style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted, marginBottom: 6 }}>
+      <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: accent, marginBottom: 6 }}>
         {title}
       </h3>
       {children}
@@ -277,9 +277,9 @@ export default async function SynchronisationsPage({ searchParams }: { searchPar
   }
 
   const fieldStyle: React.CSSProperties = {
-    height: 38,
+    height: 44,
     padding: '0 10px',
-    borderRadius: 10,
+    borderRadius: radiusButton,
     border: `1px solid ${line}`,
     background: surface,
     color: ink,
@@ -319,7 +319,7 @@ export default async function SynchronisationsPage({ searchParams }: { searchPar
         }
       `}</style>
 
-      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Synchronisations</h1>
+      <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Synchronisations</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Historique des synchronisations manuelles Meta + Calendly</p>
 
       <form
@@ -360,7 +360,7 @@ export default async function SynchronisationsPage({ searchParams }: { searchPar
         </label>
         <button
           type="submit"
-          style={{ height: 38, padding: '0 18px', borderRadius: 999, border: 0, background: indigo, color: '#FFFFFF', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          style={{ height: 44, padding: '0 18px', borderRadius: radiusButton, border: `1px solid ${ctaBorder}`, background: 'transparent', color: ink, fontSize: 13, fontWeight: 650, cursor: 'pointer' }}
         >
           Filtrer
         </button>

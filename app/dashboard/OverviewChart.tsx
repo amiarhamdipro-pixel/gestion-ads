@@ -25,7 +25,20 @@
 
 import { useState } from 'react'
 import { appointmentsPerDay, campaignDurationDays, realAppointments, spendPerDay } from '@/lib/calculations'
-import { chartOrange, faint, ink, line as lineColor, muted, surface, surfaceAlt, violet } from './format'
+import {
+  accent,
+  chartBars,
+  chartLine,
+  faint,
+  ink,
+  lavender,
+  line as lineColor,
+  muted,
+  radius,
+  radiusButton,
+  surface,
+  surfaceAlt,
+} from './format'
 import { ChevronDownIcon, InfoIcon } from './icons'
 
 export type OverviewMode = 'total' | 'day'
@@ -219,7 +232,7 @@ function ToggleGroup<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: 999, padding: 3, flexShrink: 0 }}>
+    <div style={{ display: 'flex', background: surfaceAlt, border: `1px solid ${lineColor}`, borderRadius: radiusButton + 3, padding: 3, flexShrink: 0 }}>
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -228,13 +241,14 @@ function ToggleGroup<T extends string>({
           aria-pressed={value === opt.value}
           style={{
             border: 0,
-            borderRadius: 999,
-            padding: '5px 12px',
+            borderRadius: radiusButton,
+            minHeight: 34,
+            padding: '0 12px',
             fontSize: 12.5,
             cursor: 'pointer',
-            background: value === opt.value ? surface : 'transparent',
+            background: value === opt.value ? lavender : 'transparent',
             color: value === opt.value ? ink : muted,
-            fontWeight: value === opt.value ? 700 : 500,
+            fontWeight: value === opt.value ? 650 : 500,
           }}
         >
           {opt.label}
@@ -275,7 +289,7 @@ function NavButton({
         width: 36,
         height: 36,
         flexShrink: 0,
-        borderRadius: 999,
+        borderRadius: radiusButton,
         border: `1px solid ${lineColor}`,
         background: surface,
         color: disabled ? faint : ink,
@@ -368,7 +382,7 @@ export default function OverviewChart({
   const titleRow = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 16, color: ink, margin: 0 }}>
+        <h2 style={{ fontWeight: 600, fontSize: 16, color: ink, margin: 0 }}>
           Évolution des rendez-vous et du dépensé
         </h2>
         <InfoIcon size={14} style={{ color: muted }} />
@@ -382,7 +396,7 @@ export default function OverviewChart({
 
   if (allPoints.length === 0) {
     return (
-      <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+      <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: radius, padding: 22 }}>
         {titleRow}
         <div style={{ padding: '28px 0 6px', textAlign: 'center', color: muted, fontSize: 13.5 }}>
           {grouping === 'campaign' && effectiveMode === 'day' && campaigns.length > 0
@@ -455,7 +469,7 @@ export default function OverviewChart({
   const rangeLabel = `${isMonth ? 'Mois' : 'Campagnes'} ${points[0].xLabel}–${points[points.length - 1].xLabel} sur ${allPoints.length}`
 
   return (
-    <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: 18, padding: 22 }}>
+    <div style={{ background: surface, border: `1px solid ${lineColor}`, borderRadius: radius, padding: 22 }}>
       {titleRow}
       <div style={{ margin: '8px 0 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -486,12 +500,12 @@ export default function OverviewChart({
           couleurs alignées sur celles réellement utilisées ci-dessous. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 22, fontSize: 13, color: ink, marginBottom: 16, flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i style={{ width: 12, height: 12, borderRadius: 3.5, background: violet, display: 'inline-block', flexShrink: 0 }} aria-hidden="true" />
+          <i style={{ width: 12, height: 12, borderRadius: 3.5, background: chartBars, display: 'inline-block', flexShrink: 0 }} aria-hidden="true" />
           {appointmentsLabel}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="20" height="10" viewBox="0 0 20 10" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
-            <line x1="1" y1="5" x2="19" y2="5" stroke={chartOrange} strokeWidth={3} strokeLinecap="round" />
+            <line x1="1" y1="5" x2="19" y2="5" style={{ stroke: chartLine }} strokeWidth={3} strokeLinecap="round" />
           </svg>
           {spendLabel}
         </span>
@@ -513,11 +527,11 @@ export default function OverviewChart({
             const y = marginTop + plotHeight * (1 - lvl / 4)
             return (
               <g key={lvl}>
-                <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} stroke={lineColor} strokeWidth={1} />
-                <text x={marginLeft - 10} y={y} textAnchor="end" dominantBaseline="middle" fontSize={12} fontWeight={500} fill={ink}>
+                <line x1={marginLeft} x2={width - marginRight} y1={y} y2={y} style={{ stroke: lineColor }} strokeWidth={1} />
+                <text x={marginLeft - 10} y={y} textAnchor="end" dominantBaseline="middle" fontSize={12} fontWeight={500} style={{ fill: ink }}>
                   {fmtSpendAxis(spendStep * lvl)} €
                 </text>
-                <text x={width - marginRight + 10} y={y} textAnchor="start" dominantBaseline="middle" fontSize={12} fontWeight={500} fill={ink}>
+                <text x={width - marginRight + 10} y={y} textAnchor="start" dominantBaseline="middle" fontSize={12} fontWeight={500} style={{ fill: ink }}>
                   {fmtAppointments(apptStep * lvl)}
                 </text>
               </g>
@@ -528,7 +542,7 @@ export default function OverviewChart({
             const top = yForAppointments(p.appointments)
             const x = xCenter(i) - barWidth / 2
             return (
-              <path key={p.key} className="ov-bar" d={barPath(x, barWidth, top, baseline, 5)} fill={violet}>
+              <path key={p.key} className="ov-bar" d={barPath(x, barWidth, top, baseline, 5)} style={{ fill: chartBars }}>
                 <title>{`${p.tooltipLabel} — ${fmtAppointments(p.appointments)} rendez-vous${effectiveMode === 'day' ? ' / jour' : ''}`}</title>
               </path>
             )
@@ -544,7 +558,7 @@ export default function OverviewChart({
               textAnchor="middle"
               fontSize={12.5}
               fontWeight={700}
-              fill={violet}
+              style={{ fill: accent }}
             >
               {fmtAppointments(p.appointments)}
             </text>
@@ -553,7 +567,7 @@ export default function OverviewChart({
           <polyline
             points={linePoints}
             fill="none"
-            stroke={chartOrange}
+            style={{ stroke: chartLine }}
             strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -565,8 +579,7 @@ export default function OverviewChart({
               cx={xCenter(i)}
               cy={yForSpend(p.spend)}
               r={3.5}
-              fill={chartOrange}
-              stroke={surface}
+              style={{ fill: chartLine, stroke: surface }}
               strokeWidth={1.5}
             >
               <title>{`${p.tooltipLabel} — ${fmtSpend(p.spend)} € dépensés${effectiveMode === 'day' ? ' / jour' : ''}`}</title>
@@ -574,13 +587,13 @@ export default function OverviewChart({
           ))}
 
           {points.map((p, i) => (
-            <text key={p.key} x={xCenter(i)} y={height - (p.xSubLabel ? 22 : 12)} textAnchor="middle" fontSize={12.5} fontWeight={600} fill={ink}>
+            <text key={p.key} x={xCenter(i)} y={height - (p.xSubLabel ? 22 : 12)} textAnchor="middle" fontSize={12.5} fontWeight={600} style={{ fill: ink }}>
               {p.xLabel}
             </text>
           ))}
           {points.map((p, i) =>
             p.xSubLabel ? (
-              <text key={`sub-${p.key}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={10.5} fill={muted}>
+              <text key={`sub-${p.key}`} x={xCenter(i)} y={height - 8} textAnchor="middle" fontSize={10.5} style={{ fill: muted }}>
                 {p.xSubLabel}
               </text>
             ) : null

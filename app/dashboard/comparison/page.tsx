@@ -11,7 +11,7 @@ import {
 } from '@/lib/calculations'
 import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import { logError } from '@/lib/logger'
-import { accent, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
+import { accent, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, red, softBg, surface, surfaceAlt } from '../format'
 import EmptyPeriodState from '../EmptyPeriodState'
 import VideoRanking, { type RankedVideo, type RankedVideosByAudience } from './VideoRanking'
 import { rankVideoRows } from './rankVideos'
@@ -143,7 +143,7 @@ export default async function ComparisonPage({
   if (!profile?.client_id) {
     return (
       <main style={{ padding: '40px 40px 64px', color: ink }}>
-        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
+        <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
         <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Toutes les campagnes ramenées à armes égales</p>
         <p style={{ marginTop: 20, color: muted }}>Aucun client associé à ce compte.</p>
       </main>
@@ -168,8 +168,8 @@ export default async function ComparisonPage({
     if (campaignMetaError) {
       return (
         <main style={{ padding: '40px 40px 64px', color: ink }}>
-          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
-          <p style={{ marginTop: 20, color: '#D93A3A' }}>Impossible de charger les données pour le moment. Réessayez plus tard.</p>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
+          <p style={{ marginTop: 20, color: red }}>Impossible de charger les données pour le moment. Réessayez plus tard.</p>
         </main>
       )
     }
@@ -184,8 +184,8 @@ export default async function ComparisonPage({
     if (dailyError) {
       return (
         <main style={{ padding: '40px 40px 64px', color: ink }}>
-          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
-          <p style={{ marginTop: 20, color: '#D93A3A' }}>Impossible de charger les statistiques journalières. Réessayez plus tard.</p>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
+          <p style={{ marginTop: 20, color: red }}>Impossible de charger les statistiques journalières. Réessayez plus tard.</p>
         </main>
       )
     }
@@ -195,7 +195,7 @@ export default async function ComparisonPage({
     if (dailyRows.length === 0) {
       return (
         <main style={{ padding: '40px 40px 64px', color: ink }}>
-          <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
           <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>{formatPeriod(resolvedRange.start, resolvedRange.end)}</p>
           <div style={{ marginTop: 24 }}>
             <EmptyPeriodState />
@@ -257,11 +257,11 @@ export default async function ComparisonPage({
           }
         `}</style>
 
-        <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
+        <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
         <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>{formatPeriod(resolvedRange.start, resolvedRange.end)}</p>
 
         <div style={{ marginTop: 30, marginBottom: 16 }}>
-          <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
+          <h2 style={{ fontWeight: 600, fontSize: 17 }}>Campagnes côte à côte</h2>
           <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
             La meilleure valeur de chaque colonne comparable est mise en avant
           </p>
@@ -492,11 +492,11 @@ export default async function ComparisonPage({
 
   return (
     <main style={{ padding: '40px 40px 64px', color: ink }}>
-      <h1 style={{ fontWeight: 700, fontSize: 26, letterSpacing: '-.01em' }}>Comparaison</h1>
+      <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Comparaison</h1>
       <p style={{ color: muted, fontSize: 13.5, marginTop: 5 }}>Toutes les campagnes ramenées à armes égales</p>
 
       {loadError ? (
-        <p style={{ marginTop: 20, color: '#D93A3A' }}>Impossible de charger les données pour le moment. Réessayez plus tard.</p>
+        <p style={{ marginTop: 20, color: red }}>Impossible de charger les données pour le moment. Réessayez plus tard.</p>
       ) : campaigns.length === 0 ? (
         <p style={{ marginTop: 20, color: muted }}>Aucune campagne synchronisée pour le moment.</p>
       ) : (
@@ -512,7 +512,7 @@ export default async function ComparisonPage({
           <CampaignPairComparison campaigns={pairCampaigns} aId={pairA} bId={pairB} isAdmin={isAdmin} />
 
           <div style={{ marginTop: 30, marginBottom: 16 }}>
-            <h2 style={{ fontWeight: 700, fontSize: 17 }}>Campagnes côte à côte</h2>
+            <h2 style={{ fontWeight: 600, fontSize: 17 }}>Campagnes côte à côte</h2>
             <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
               La meilleure valeur de chaque colonne comparable est mise en avant
             </p>

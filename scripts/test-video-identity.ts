@@ -151,6 +151,72 @@ test('audience avec deux vidéos réellement différentes : toujours non compara
   assert.ok(r.all.every((v) => v.cplNote === 'shared_audience' && v.totalLeads === null))
 })
 
+// ── Noms Meta corrompus : "╠ü" = U+0301 (UTF-8 CC 81) relu en CP437 ─────
+const META_YONN_BAD = 'vide╠üo 5- yonn cut itw .mp4'
+const META_YONN_OK = 'video 5- yonn cut itw.mp4'
+const META_CIS_BAD = 'video 3 - vide╠üo ciseaux .mp4'
+const META_CIS_OK = 'video 3 - video ciseaux.mp4'
+
+// Répartitions observées en production avant correction :
+// Yonn 3 campagnes / 21 leads + 2 campagnes / 4 leads ;
+// Ciseaux 1 campagne / 6 leads + 4 campagnes / 12 leads.
+function metaFixture(extra: [number, 'barbier' | 'coiffeur', number, string][] = []) {
+  const rows: [number, 'barbier' | 'coiffeur', number, string][] = [
+    [1, 'barbier', 7, META_YONN_OK], [2, 'barbier', 7, META_YONN_OK], [3, 'barbier', 7, META_YONN_OK],
+    [4, 'barbier', 2, META_YONN_BAD], [5, 'barbier', 2, META_YONN_BAD],
+    [6, 'coiffeur', 6, META_CIS_OK],
+    [7, 'coiffeur', 3, META_CIS_BAD], [8, 'coiffeur', 3, META_CIS_BAD], [9, 'coiffeur', 3, META_CIS_BAD], [10, 'coiffeur', 3, META_CIS_BAD],
+    [11, 'barbier', 4, 'video 1 - coupe.mp4'], [12, 'barbier', 5, 'video 2 - coupe.mp4'],
+    ...extra,
+  ]
+  return rankVideoRows(
+    rows.map(([n, type, leads]) => ({ id: `m${n}`, campaign_id: `mc${n}`, audience_type: type, meta_spend: leads * 10, meta_pixel_leads: leads })),
+    rows.map(([n, , , name]) => ({ ...videos[0], audience_id: `m${n}`, video_display_name: name })),
+    rows.map(([n]) => ({ id: `mc${n}`, campaign_number: 100 + n, sync_locked: false }))
+  )
+}
+
+test('noms Meta corrompus : les deux variantes donnent la même clé', () => {
+  assert.equal(videoIdentityKey(META_YONN_BAD), videoIdentityKey(META_YONN_OK))
+  assert.equal(videoIdentityKey(META_CIS_BAD), videoIdentityKey(META_CIS_OK))
+  assert.equal(videoIdentityKey(META_YONN_BAD), 'video 5-yonn cut itw.mp4')
+})
+
+test('noms Meta corrompus : Yonn 5 campagnes / 25 leads, Ciseaux 5 campagnes / 18 leads', () => {
+  const r = metaFixture()
+  const [yonn, ...y2] = r.all.filter((v) => v.identityKey === videoIdentityKey(META_YONN_OK))
+  const [cis, ...c2] = r.all.filter((v) => v.identityKey === videoIdentityKey(META_CIS_OK))
+  assert.equal(y2.length + c2.length, 0)
+  assert.equal(yonn.campaignCount, 5)
+  assert.equal(yonn.totalLeads, 25)
+  assert.equal(yonn.costPerLead, 10)
+  assert.equal(yonn.displayName, META_YONN_OK, 'variante majoritaire (3 contre 2)')
+  assert.equal(cis.campaignCount, 5)
+  assert.equal(cis.totalLeads, 18)
+  assert.equal(cis.costPerLead, 10)
+  assert.equal(r.all.length, 4, 'les deux vidéos témoins restent séparées')
+})
+
+test('noms Meta corrompus : une future campagne réutilisant le nom est regroupée', () => {
+  const r = metaFixture([[13, 'barbier', 5, META_YONN_BAD], [14, 'coiffeur', 2, META_CIS_OK]])
+  const [yonn] = r.all.filter((v) => v.identityKey === videoIdentityKey(META_YONN_OK))
+  const [cis] = r.all.filter((v) => v.identityKey === videoIdentityKey(META_CIS_OK))
+  assert.equal(r.all.length, 4)
+  assert.equal(yonn.campaignCount, 6)
+  assert.equal(yonn.totalLeads, 30)
+  assert.equal(cis.campaignCount, 6)
+  assert.equal(cis.totalLeads, 20)
+})
+
+test('noms Meta corrompus : correction ciblée, aucune fusion abusive', () => {
+  // Seule la séquence complète "╠ü" est rétablie ; chaque caractère isolé reste significatif.
+  assert.notEqual(videoIdentityKey('video ╠ 5.mp4'), videoIdentityKey('video 5.mp4'))
+  assert.notEqual(videoIdentityKey('vide╠o 5.mp4'), videoIdentityKey('video 5.mp4'))
+  assert.notEqual(videoIdentityKey('vide╠üo 5- yonn cut itw .mp4'), videoIdentityKey('vide╠üo 6- yonn cut itw .mp4'))
+  assert.notEqual(videoIdentityKey('video 3 - vide╠üo ciseaux .mp4'), videoIdentityKey('video 3 - vide╠üo ciseaux 2.mp4'))
+  assert.notEqual(videoIdentityKey('video 3 - vide╠üo ciseaux .mp4'), videoIdentityKey('video 3 - vide╠üo ciseaux .mov'))
+})
+
 // ── Recommandations ──────────────────────────────────────────────────────
 test('recommandations : calculées sur les groupes fusionnés', () => {
   const locked = new Set(campaigns.filter((c) => c.sync_locked).map((c) => c.campaign_number))

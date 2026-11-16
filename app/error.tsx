@@ -8,7 +8,7 @@
 // depuis ce composant.
 
 import Link from 'next/link'
-import { accent, headerBg, ink, line, muted, radius, surface } from './dashboard/format'
+import { accent, buttonLight, buttonLightText, fullscreenBg, ink, line, muted, radius, radiusButton, shadow, surface } from './dashboard/format'
 
 export default function ErrorBoundary({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
@@ -19,7 +19,7 @@ export default function ErrorBoundary({ reset }: { error: Error & { digest?: str
         alignItems: 'center',
         justifyContent: 'center',
         padding: 24,
-        background: `linear-gradient(135deg, ${headerBg} 0%, ${accent} 140%)`,
+        background: fullscreenBg,
       }}
     >
       <div
@@ -29,12 +29,12 @@ export default function ErrorBoundary({ reset }: { error: Error & { digest?: str
           background: surface,
           borderRadius: radius,
           border: `1px solid ${line}`,
-          boxShadow: '0 24px 60px rgba(15, 16, 30, 0.35)',
+          boxShadow: shadow,
           padding: '40px 32px',
           textAlign: 'center',
         }}
       >
-        <h1 style={{ fontWeight: 700, fontSize: 20, color: ink, margin: 0 }}>Une erreur est survenue</h1>
+        <h1 style={{ fontWeight: 600, fontSize: 20, color: ink, margin: 0 }}>Une erreur est survenue</h1>
         <p style={{ fontSize: 13, color: muted, marginTop: 8, marginBottom: 24 }}>
           Réessayez, ou revenez au tableau de bord.
         </p>
@@ -44,12 +44,13 @@ export default function ErrorBoundary({ reset }: { error: Error & { digest?: str
             onClick={reset}
             style={{
               border: 0,
-              borderRadius: 999,
-              padding: '10px 18px',
+              borderRadius: radiusButton,
+              minHeight: 44,
+              padding: '0 18px',
               fontSize: 13.5,
-              fontWeight: 700,
-              color: '#FFFFFF',
-              background: accent,
+              fontWeight: 650,
+              color: buttonLightText,
+              background: buttonLight,
               cursor: 'pointer',
             }}
           >

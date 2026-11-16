@@ -1,4 +1,4 @@
-import { amber, gray, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
+import { accent, amber, gray, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import type { RankedVideo, RankedVideosByAudience } from './VideoRanking'
 
 // Recommandations vidéo — ADMIN UNIQUEMENT. Composant serveur (aucun
@@ -133,7 +133,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function AudienceSection({ title, recommendation }: { title: string; recommendation: VideoRecommendation }) {
   return (
     <div style={{ background: surfaceAlt, borderRadius: 12, padding: '12px 14px', minWidth: 0 }}>
-      <h3 style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: muted, marginBottom: 8 }}>{title}</h3>
+      <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: accent, marginBottom: 8 }}>{title}</h3>
       {recommendation.status === 'none' ? (
         <>
           <p style={{ fontSize: 13.5, fontWeight: 600 }}>Pas de recommandation fiable</p>
@@ -180,7 +180,7 @@ export default function VideoRecommendations({
 }) {
   return (
     <section style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 18, marginBottom: 20 }}>
-      <h2 style={{ fontWeight: 700, fontSize: 17 }}>Recommandations vidéo</h2>
+      <h2 style={{ fontWeight: 600, fontSize: 17 }}>Recommandations vidéo</h2>
       <p style={{ color: muted, fontSize: 12.5, marginTop: 2 }}>
         Toutes périodes · réservé à l’admin · coût/lead Meta de l’audience, au moins {MIN_LEADS} leads ; « Confirmée » = au
         moins {CONFIRMED_MIN_LEADS} leads sur {CONFIRMED_MIN_CAMPAIGNS} campagnes (repère métier, pas une garantie statistique).

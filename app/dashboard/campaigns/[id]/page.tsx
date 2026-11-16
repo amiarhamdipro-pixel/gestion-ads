@@ -19,7 +19,11 @@ import KpiCard from '../../KpiCard'
 import PublishToggle from '../../PublishToggle'
 import VideoThumbnail from './VideoThumbnail'
 import {
+  accent,
+  accentDeep,
   amber,
+  buttonLightText,
+  ctaBorder,
   facebookBlue,
   faint,
   formatCost,
@@ -36,10 +40,13 @@ import {
   muted,
   onDark,
   radius,
+  radiusButton,
   red,
   softBg,
   surface,
   surfaceAlt,
+  surfaceElevated,
+  thumbOverlay,
   violet,
 } from '../../format'
 import { CalendarIcon, ClockIcon, DollarIcon, TrackingIcon, TrendingUpIcon, UserIcon } from '../../icons'
@@ -89,7 +96,9 @@ function groupByAcquisitionChannel(rawChannels: (string | null)[]): ChannelBreak
 // Couleurs des segments du donut « Rendez-vous par canal », ordre fixe
 // (jamais réattribué si un canal disparaît/apparaît d'une page à l'autre),
 // toutes déjà présentes dans la palette — aucune teinte inventée.
-const CHANNEL_COLORS = [indigo, violet, amber, green, red, gray]
+// Rotation pensée pour deux thèmes : deux segments voisins ne partagent
+// jamais une teinte proche (violet principal et violet profond séparés).
+const CHANNEL_COLORS = [indigo, amber, green, red, accentDeep, gray]
 
 // Tranches d'âge Meta réellement stockées (appointment_breakdowns, voir
 // lib/sync/mapper.ts, mapAgeInsightsToBreakdownInsert — age_55_plus regroupe
@@ -396,9 +405,9 @@ export default async function CampaignDetailPage({
           style={{
             border: `1px solid ${line}`,
             background: surface,
-            borderRadius: 10,
-            width: 34,
-            height: 34,
+            borderRadius: radiusButton,
+            width: 44,
+            height: 44,
             display: 'grid',
             placeItems: 'center',
             color: muted,
@@ -409,11 +418,11 @@ export default async function CampaignDetailPage({
         </Link>
         <div>
           <div
-            style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.09em', textTransform: 'uppercase', color: muted }}
+            style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.09em', textTransform: 'uppercase', color: accent }}
           >
             Détail campagne
           </div>
-          <h1 style={{ fontWeight: 700, fontSize: 24, letterSpacing: '-.01em' }}>Campagne {campaign.campaign_number}</h1>
+          <h1 style={{ fontWeight: 560, fontSize: 28, letterSpacing: '-.015em' }}>Campagne {campaign.campaign_number}</h1>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* État sync_locked (règle métier officielle, voir
@@ -532,7 +541,7 @@ export default async function CampaignDetailPage({
       </div>
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+        <h2 style={{ fontWeight: 600, fontSize: 17 }}>
           {campaign.sync_locked ? 'Leads par plateforme (Facebook / Instagram)' : 'RDV par plateforme'}
         </h2>
       </div>
@@ -568,7 +577,7 @@ export default async function CampaignDetailPage({
                 : `${channelTotal} rendez-vous répartis par plateforme`
             }
           >
-            <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
+            <circle cx={70} cy={70} r={54} fill="none" style={{ stroke: surfaceAlt }} strokeWidth={18} />
             {donutSegments(channelBreakdown, channelTotal, 54).map((seg, i) => (
               <circle
                 key={channelBreakdown[i].channel}
@@ -576,17 +585,17 @@ export default async function CampaignDetailPage({
                 cy={70}
                 r={54}
                 fill="none"
-                stroke={seg.color}
+                style={{ stroke: seg.color }}
                 strokeWidth={18}
                 strokeDasharray={seg.dasharray}
                 strokeDashoffset={seg.dashoffset}
                 transform="rotate(-90 70 70)"
               />
             ))}
-            <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
+            <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} style={{ fill: ink }}>
               {breakdownGrandTotal}
             </text>
-            <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
+            <text x={70} y={83} textAnchor="middle" fontSize={11} style={{ fill: muted }}>
               {campaign.sync_locked ? 'leads' : 'RDV'}
             </text>
           </svg>
@@ -644,7 +653,7 @@ export default async function CampaignDetailPage({
       {!campaign.sync_locked ? (
         <>
           <div style={{ marginTop: 32, marginBottom: 16 }}>
-            <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+            <h2 style={{ fontWeight: 600, fontSize: 17 }}>
               Répartition des leads Meta par tranche d&apos;âge
               {resolvedRange ? (
                 <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
@@ -674,7 +683,7 @@ export default async function CampaignDetailPage({
               }}
             >
               <svg width={140} height={140} viewBox="0 0 140 140" style={{ flexShrink: 0 }} role="img" aria-label={`${ageBreakdownTotal} leads Meta répartis par tranche d'âge`}>
-                <circle cx={70} cy={70} r={54} fill="none" stroke={surfaceAlt} strokeWidth={18} />
+                <circle cx={70} cy={70} r={54} fill="none" style={{ stroke: surfaceAlt }} strokeWidth={18} />
                 {donutSegments(ageBreakdown, ageBreakdownTotal, 54).map((seg, i) => (
                   <circle
                     key={ageBreakdown[i].channel}
@@ -682,17 +691,17 @@ export default async function CampaignDetailPage({
                     cy={70}
                     r={54}
                     fill="none"
-                    stroke={seg.color}
+                    style={{ stroke: seg.color }}
                     strokeWidth={18}
                     strokeDasharray={seg.dasharray}
                     strokeDashoffset={seg.dashoffset}
                     transform="rotate(-90 70 70)"
                   />
                 ))}
-                <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} fill={ink}>
+                <text x={70} y={65} textAnchor="middle" fontSize={22} fontWeight={700} style={{ fill: ink }}>
                   {ageBreakdownTotal}
                 </text>
-                <text x={70} y={83} textAnchor="middle" fontSize={11} fill={muted}>
+                <text x={70} y={83} textAnchor="middle" fontSize={11} style={{ fill: muted }}>
                   leads
                 </text>
               </svg>
@@ -723,7 +732,7 @@ export default async function CampaignDetailPage({
       ) : null}
 
       <div style={{ marginTop: 32, marginBottom: 16 }}>
-        <h2 style={{ fontWeight: 700, fontSize: 17 }}>
+        <h2 style={{ fontWeight: 600, fontSize: 17 }}>
           Barbier vs Coiffeur
           {resolvedRange ? (
             <span style={{ fontWeight: 600, fontSize: 12.5, color: muted, marginLeft: 8 }}>(total campagne)</span>
@@ -806,7 +815,15 @@ export default async function CampaignDetailPage({
               return (
                 <div
                   key={audience.id}
-                  style={{ background: surface, border: `1px solid ${line}`, borderRadius: radius, padding: 16 }}
+                  style={{
+                    background: surfaceElevated,
+                    // Mise en avant admin "Meilleur coût/lead" : bordure CTA de
+                    // la charte, en complément de la pastille texte (jamais
+                    // la couleur seule).
+                    border: `1px solid ${isAdmin && isBestCostPerLead ? ctaBorder : line}`,
+                    borderRadius: radius,
+                    padding: 18,
+                  }}
                 >
                   {/* Vignette vidéo : placeholder sobre par défaut (fond
                       sombre uni, jamais cliquable, aucune icône de lecture —
@@ -854,7 +871,7 @@ export default async function CampaignDetailPage({
                             fontWeight: 700,
                             padding: '3px 9px',
                             borderRadius: 999,
-                            background: 'rgba(0, 0, 0, 0.45)',
+                            background: thumbOverlay,
                             color: onDark,
                             zIndex: 1,
                           }}
@@ -872,11 +889,10 @@ export default async function CampaignDetailPage({
                               padding: '3px 9px',
                               borderRadius: 999,
                               background: green,
-                              // color: ink, pas onDark (blanc) — blanc sur
-                              // vert plein ne passe pas un contraste
-                              // suffisant (~2,5:1) ; ink y reste très lisible
-                              // (~7:1).
-                              color: ink,
+                              // buttonLightText (#24142D nuit / #F1E7F7
+                              // clair) : ≥ 5:1 sur le vert de statut des deux
+                              // thèmes (ink, clair en nuit, tomberait à ~2,4:1).
+                              color: buttonLightText,
                               zIndex: 1,
                             }}
                           >
@@ -1054,11 +1070,11 @@ export default async function CampaignDetailPage({
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 13 }}>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
+                      <div style={{ flex: 1, textAlign: 'center', borderRadius: radiusButton, padding: '9px 4px', background: surfaceAlt }}>
                         <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(hook)}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Accroche</div>
                       </div>
-                      <div style={{ flex: 1, textAlign: 'center', borderRadius: 10, padding: '9px 4px', background: surfaceAlt }}>
+                      <div style={{ flex: 1, textAlign: 'center', borderRadius: radiusButton, padding: '9px 4px', background: surfaceAlt }}>
                         <div style={{ fontWeight: 700, fontSize: 16 }}>{formatPct(retention)}</div>
                         <div style={{ fontSize: 10.5, color: muted, marginTop: 4 }}>Rétention</div>
                       </div>
