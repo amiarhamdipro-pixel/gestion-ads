@@ -92,7 +92,27 @@ export default async function DashboardPage({
       )
     }
 
-    const dailyRows = dailyRowsRaw ?? []
+    const { data: campaignMeta } = await supabase
+      .from('campaigns')
+      .select('id, campaign_number, published')
+      .eq('client_id', profile.client_id)
+      .order('campaign_number', { ascending: true })
+
+    // État de publication (indépendant du statut Meta) : le client ne voit
+    // que les campagnes published=true, décision exclusivement admin (voir
+    // aussi comparison/page.tsx et campaigns/[id]/page.tsx, même règle).
+    // L'admin voit tout, y compris les campagnes non encore publiées.
+    const visibleCampaignMeta = (campaignMeta ?? []).filter((c) => isAdmin || c.published)
+
+    // Filtre de visibilité appliqué AVANT toute agrégation (KPI, graphique,
+    // tableau) : pour un client, seules les lignes journalières d'une
+    // campagne publiée sont retenues — une ligne d'une campagne non publiée
+    // ou absente de la liste est exclue (lecture en échec -> rien, jamais
+    // tout). Admin : lignes inchangées, aucun filtre.
+    const visibleCampaignIds = new Set(visibleCampaignMeta.map((c) => c.id))
+    const dailyRows = isAdmin
+      ? (dailyRowsRaw ?? [])
+      : (dailyRowsRaw ?? []).filter((row) => visibleCampaignIds.has(row.campaign_id))
 
     if (dailyRows.length === 0) {
       return (
@@ -132,18 +152,6 @@ export default async function DashboardPage({
       spend: byDate.get(date)?.spend ?? 0,
       appointments: byDate.get(date)?.appointments ?? 0,
     }))
-
-    const { data: campaignMeta } = await supabase
-      .from('campaigns')
-      .select('id, campaign_number, published')
-      .eq('client_id', profile.client_id)
-      .order('campaign_number', { ascending: true })
-
-    // État de publication (indépendant du statut Meta) : le client ne voit
-    // que les campagnes published=true, décision exclusivement admin (voir
-    // aussi comparison/page.tsx et campaigns/[id]/page.tsx, même règle).
-    // L'admin voit tout, y compris les campagnes non encore publiées.
-    const visibleCampaignMeta = (campaignMeta ?? []).filter((c) => isAdmin || c.published)
 
     const campaignRows = visibleCampaignMeta
       .filter((c) => byCampaign.has(c.id))
