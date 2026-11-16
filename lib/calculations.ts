@@ -158,7 +158,7 @@ function parisOffsetMinutes(utcDate: Date): number {
 // l'estimation — y compris le jour même d'un changement d'heure, car 00:00:00
 // et 23:59:59 tombent toujours hors de l'heure ambiguë/inexistante du
 // changement (qui se produit à 2h/3h locales en Europe/Paris).
-function parisDateToUtcMs(dateStr: string, hour: number, minute: number, second: number): number {
+export function parisDateToUtcMs(dateStr: string, hour: number, minute: number, second: number): number {
   const [year, month, day] = dateStr.split('-').map(Number)
   const naiveUtcMs = Date.UTC(year, month - 1, day, hour, minute, second)
   const offsetMinutes = parisOffsetMinutes(new Date(naiveUtcMs))

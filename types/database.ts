@@ -1,6 +1,10 @@
 export type UserRole = 'admin' | 'client'
 export type AudienceType = 'barbier' | 'coiffeur'
 export type SyncRunStatus = 'running' | 'success' | 'failed'
+export type AdminSyncRunStatus = 'running' | 'success' | 'partial' | 'failed' | 'no_campaign'
+export type AdminSyncRunAbortedStep = 'meta_totals' | 'calendly_appointments'
+
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 export type AppointmentStatus = 'active' | 'canceled'
 
 export type Client = {
@@ -149,6 +153,25 @@ export type SyncRun = {
   started_at: string
   finished_at: string | null
   error_message: string | null
+}
+
+// Historique des synchronisations manuelles (bouton admin « Synchroniser »,
+// /api/admin/sync/all), une ligne par clic — distinct de sync_runs (journal
+// Meta par campagne). Voir migration 20261115000000_admin_sync_runs.sql.
+export type AdminSyncRun = {
+  id: string
+  client_id: string
+  started_by: string | null
+  trigger: 'manual'
+  status: AdminSyncRunStatus
+  aborted_at_step: AdminSyncRunAbortedStep | null
+  target_campaign_number: number | null
+  total_errors: number
+  error_message: string | null
+  report: Json | null
+  started_at: string
+  finished_at: string | null
+  duration_ms: number | null
 }
 
 // Rendez-vous Calendly, source de vérité (voir BRIEF-CLAUDE-CODE.md section 3).
@@ -332,6 +355,12 @@ export interface Database {
         Insert: Partial<Pick<SyncRun, 'id' | 'started_at' | 'finished_at' | 'error_message'>> &
           Omit<SyncRun, 'id' | 'started_at' | 'finished_at' | 'error_message'>
         Update: Partial<SyncRun>
+        Relationships: []
+      }
+      admin_sync_runs: {
+        Row: AdminSyncRun
+        Insert: Partial<Omit<AdminSyncRun, 'client_id'>> & Pick<AdminSyncRun, 'client_id'>
+        Update: Partial<AdminSyncRun>
         Relationships: []
       }
       appointments: {

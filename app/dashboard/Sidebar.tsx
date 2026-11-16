@@ -2,15 +2,15 @@
 
 // Navigation latérale persistante. Reflète uniquement les fonctionnalités
 // réellement disponibles : Vue d'ensemble et Comparaison pour tous, plus
-// Utilisateurs pour les admins uniquement. Aucune entrée décorative vers des
-// pages qui n'existent pas (Vidéos, Synchronisations, Clients, Paramètres...).
+// Synchronisations et Utilisateurs pour les admins uniquement. Aucune entrée
+// décorative vers des pages qui n'existent pas (Vidéos, Clients, Paramètres...).
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { logout } from './actions'
 import { accent, getMobileMenuOpen, ink, line, muted, setMobileMenuOpen, subscribeMobileMenu, surface } from './format'
-import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, UserIcon } from './icons'
+import { ChevronDownIcon, CompareIcon, HomeIcon, LogoutIcon, SyncIcon, UserIcon } from './icons'
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -38,7 +38,12 @@ export default function Sidebar({
   const nav = [
     { label: "Vue d'ensemble", href: '/dashboard', icon: HomeIcon },
     { label: 'Comparaison', href: '/dashboard/comparison', icon: CompareIcon },
-    ...(isAdmin ? [{ label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon }] : []),
+    ...(isAdmin
+      ? [
+          { label: 'Synchronisations', href: '/dashboard/synchronisations', icon: SyncIcon },
+          { label: 'Utilisateurs', href: '/dashboard/admin/users', icon: UserIcon },
+        ]
+      : []),
   ]
 
   function closeMenu() {

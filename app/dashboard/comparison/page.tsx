@@ -14,7 +14,7 @@ import { buildDateRangeQueryString } from '@/lib/dateRangeQuery'
 import { logError } from '@/lib/logger'
 import { accent, formatCost, formatEur, formatPeriod, green, ink, line, muted, radius, softBg, surface, surfaceAlt } from '../format'
 import EmptyPeriodState from '../EmptyPeriodState'
-import VideoRanking, { type RankedVideo } from './VideoRanking'
+import VideoRanking, { type RankedVideo, type RankedVideosByAudience } from './VideoRanking'
 
 type CampaignRow = {
   id: string
@@ -79,41 +79,56 @@ function TopBadge() {
 // exact, extension .mp4 incluse, est conservé tel quel dans RankedVideo.
 // displayName). Deux vidéos dont les noms diffèrent réellement, même
 // proches, restent deux lignes distinctes.
-async function computeRankedVideos(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
-): Promise<RankedVideo[]> {
-  if (campaigns.length === 0) return []
+//
+// Dépenses/leads : ce sont ceux de l'AUDIENCE (audiences.meta_spend /
+// meta_pixel_leads — aucune donnée par vidéo en base). Règle métier : 1 vidéo
+// par audience. Chaque audience n'est donc comptée qu'UNE fois par vidéo
+// regroupée (jamais une fois par ligne vidéo), et une audience portant
+// plusieurs vidéos distinctes ne peut être attribuée à aucune d'elles : le
+// coût/lead des vidéos concernées est marqué non comparable.
+//
+// Filtre Toutes / Barbier / Coiffeur : appliqué aux occurrences AVANT le
+// regroupement (les trois vues sont calculées ici, une seule lecture base).
 
-  const { data: audienceData } = await supabase
-    .from('audiences')
-    .select('id, campaign_id, audience_type, meta_spend, meta_pixel_leads')
-    .in(
-      'campaign_id',
-      campaigns.map((c) => c.id)
-    )
-  const audiences = audienceData ?? []
-  if (audiences.length === 0) return []
+type RankingAudienceRow = {
+  id: string
+  campaign_id: string
+  audience_type: 'barbier' | 'coiffeur'
+  meta_spend: number
+  meta_pixel_leads: number
+}
 
-  const { data: videoData } = await supabase
-    .from('videos')
-    .select('audience_id, name, video_display_name, video_plays, video_plays_3s, video_p100, hook_rate_pct, retention_rate_pct')
-    .in(
-      'audience_id',
-      audiences.map((a) => a.id)
-    )
-  const videos = videoData ?? []
+type RankingVideoRow = {
+  audience_id: string
+  name: string
+  video_display_name: string | null
+  video_plays: number
+  video_plays_3s: number | null
+  video_p100: number | null
+  hook_rate_pct: number | null
+  retention_rate_pct: number | null
+}
 
-  const audienceById = new Map(audiences.map((a) => [a.id, a]))
-  const campaignByAudienceId = new Map(audiences.map((a) => [a.id, a.campaign_id]))
-  const campaignById = new Map(campaigns.map((c) => [c.id, c]))
+type VideoOccurrence = {
+  video: RankingVideoRow
+  audience: RankingAudienceRow
+  campaign: { campaign_number: number; sync_locked: boolean } | undefined
+  identityKey: string
+  displayName: string
+}
 
+function rankOccurrences(occurrences: VideoOccurrence[], sharedAudienceIds: Set<string>): RankedVideo[] {
   type VideoGroup = {
     displayName: string
-    audienceType: 'barbier' | 'coiffeur'
+    audienceTypes: Set<'barbier' | 'coiffeur'>
     campaignNumbers: Set<number>
+    // Audiences déjà comptées pour ce groupe : chacune une seule fois.
+    countedAudienceIds: Set<string>
     totalSpend: number
     totalLeads: number
+    // Au moins une occurrence vient d'une audience à plusieurs vidéos :
+    // dépenses/leads non attribuables -> coût/lead non comparable.
+    touchesSharedAudience: boolean
     // Accroche et rétention agrégées indépendamment l'une de l'autre (une
     // occurrence peut avoir l'une en pct Excel et l'autre en compteurs bruts
     // — même règle de priorité par champ que campaigns/[id]/page.tsx :
@@ -135,25 +150,17 @@ async function computeRankedVideos(
   }
 
   const groups = new Map<string, VideoGroup>()
-  for (const video of videos) {
-    const audience = audienceById.get(video.audience_id)
-    if (!audience) continue
-
-    const campaignId = campaignByAudienceId.get(video.audience_id)
-    const campaign = campaignId ? campaignById.get(campaignId) : undefined
-    const campaignNumber = campaign?.campaign_number
-
-    const displayName = video.video_display_name?.trim() || video.name.trim() || 'Vidéo'
-    const identityKey = displayName.toLowerCase()
-
+  for (const { video, audience, campaign, identityKey, displayName } of occurrences) {
     let group = groups.get(identityKey)
     if (!group) {
       group = {
         displayName,
-        audienceType: audience.audience_type,
+        audienceTypes: new Set(),
         campaignNumbers: new Set<number>(),
+        countedAudienceIds: new Set<string>(),
         totalSpend: 0,
         totalLeads: 0,
+        touchesSharedAudience: false,
         rawHookPlays: 0,
         rawHookPlays3s: 0,
         excelHookWeightedSum: 0,
@@ -166,9 +173,16 @@ async function computeRankedVideos(
       groups.set(identityKey, group)
     }
 
-    group.totalSpend += audience.meta_spend
-    group.totalLeads += audience.meta_pixel_leads
-    if (campaignNumber !== undefined) group.campaignNumbers.add(campaignNumber)
+    group.audienceTypes.add(audience.audience_type)
+    if (campaign) group.campaignNumbers.add(campaign.campaign_number)
+
+    if (sharedAudienceIds.has(audience.id)) {
+      group.touchesSharedAudience = true
+    } else if (!group.countedAudienceIds.has(audience.id)) {
+      group.countedAudienceIds.add(audience.id)
+      group.totalSpend += audience.meta_spend
+      group.totalLeads += audience.meta_pixel_leads
+    }
 
     const hookFromExcel = Boolean(campaign?.sync_locked) && video.hook_rate_pct != null
     if (hookFromExcel) {
@@ -178,13 +192,12 @@ async function computeRankedVideos(
       // impressions/video_plays_3s. Jamais une moyenne simple non pondérée.
       group.excelHookWeightedSum += (video.hook_rate_pct as number) * video.video_plays
       group.excelHookWeight += video.video_plays
-    } else {
-      // video_plays_3s peut être null (vidéo historique jamais synchronisée,
-      // sans pct Excel non plus — cas rare) : une contribution "inconnue"
-      // compte pour 0 dans la SOMME du groupe, jamais inventée. video_plays
-      // n'est lui jamais null (voir types/database.ts, Video).
+    } else if (video.video_plays_3s != null) {
+      // video_plays_3s null (vidéo historique jamais synchronisée, sans pct
+      // Excel non plus) : occurrence exclue du numérateur ET du
+      // dénominateur — ses vues ne doivent pas abaisser l'accroche du groupe.
       group.rawHookPlays += video.video_plays
-      group.rawHookPlays3s += video.video_plays_3s ?? 0
+      group.rawHookPlays3s += video.video_plays_3s
     }
 
     const retentionFromExcel = Boolean(campaign?.sync_locked) && video.retention_rate_pct != null
@@ -227,20 +240,105 @@ async function computeRankedVideos(
   }
 
   // Coût/lead : jamais une moyenne des coûts/lead individuels, toujours le
-  // ratio des totaux agrégés (Σdépenses ÷ Σleads) — costPerMetaPixelLead
-  // renvoie déjà null si Σleads = 0 (aucun lead total -> "—", jamais classée
-  // meilleure vidéo, voir VideoRanking.tsx). meta_pixel_leads n'est jamais
-  // null (voir types/database.ts, Audience) : une occurrence sans lead
-  // contribue un vrai 0 à la somme, jamais une valeur inventée.
-  return Array.from(groups.values()).map((g) => ({
-    identityKey: g.displayName.toLowerCase(),
-    displayName: g.displayName,
-    campaignCount: g.campaignNumbers.size,
-    audienceType: g.audienceType,
-    costPerLead: costPerMetaPixelLead(g.totalSpend, g.totalLeads),
-    hookPlay: finalizeHookRate(g),
-    retentionRate: finalizeRetentionRate(g),
-  }))
+  // ratio des totaux cumulés (Σdépenses ÷ Σleads, audiences comptées une
+  // fois). Indisponible (null, jamais 0 €, jamais classé meilleur) si
+  // l'audience est partagée, si aucun lead, ou si aucune dépense n'est
+  // renseignée (0 € avec des leads = donnée incomplète, pas une performance).
+  return Array.from(groups.values()).map((g) => {
+    const cplNote: RankedVideo['cplNote'] = g.touchesSharedAudience
+      ? 'shared_audience'
+      : g.totalLeads <= 0
+        ? 'no_leads'
+        : g.totalSpend <= 0
+          ? 'no_spend'
+          : null
+    return {
+      identityKey: g.displayName.toLowerCase(),
+      displayName: g.displayName,
+      campaignCount: g.campaignNumbers.size,
+      audienceType: g.audienceTypes.size > 1 ? 'both' : (g.audienceTypes.values().next().value ?? 'barbier'),
+      totalLeads: g.touchesSharedAudience ? null : g.totalLeads,
+      costPerLead: cplNote === null ? costPerMetaPixelLead(g.totalSpend, g.totalLeads) : null,
+      cplNote,
+      hookPlay: finalizeHookRate(g),
+      retentionRate: finalizeRetentionRate(g),
+    }
+  })
+}
+
+async function computeRankedVideos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
+): Promise<RankedVideosByAudience> {
+  const empty: RankedVideosByAudience = { all: [], barbier: [], coiffeur: [] }
+  if (campaigns.length === 0) return empty
+
+  const { data: audienceData } = await supabase
+    .from('audiences')
+    .select('id, campaign_id, audience_type, meta_spend, meta_pixel_leads')
+    .in(
+      'campaign_id',
+      campaigns.map((c) => c.id)
+    )
+  const audiences = audienceData ?? []
+  if (audiences.length === 0) return empty
+
+  const { data: videoData } = await supabase
+    .from('videos')
+    .select('audience_id, name, video_display_name, video_plays, video_plays_3s, video_p100, hook_rate_pct, retention_rate_pct')
+    .in(
+      'audience_id',
+      audiences.map((a) => a.id)
+    )
+  const videos = videoData ?? []
+
+  return rankVideoRows(audiences, videos, campaigns)
+}
+
+// Partie pure (aucune lecture base) : occurrences, détection des audiences à
+// plusieurs vidéos, puis les trois vues filtrées.
+function rankVideoRows(
+  audiences: RankingAudienceRow[],
+  videos: RankingVideoRow[],
+  campaigns: { id: string; campaign_number: number; sync_locked: boolean }[]
+): RankedVideosByAudience {
+  const audienceById = new Map(audiences.map((a) => [a.id, a]))
+  const campaignById = new Map(campaigns.map((c) => [c.id, c]))
+
+  const occurrences: VideoOccurrence[] = []
+  for (const video of videos) {
+    const audience = audienceById.get(video.audience_id)
+    if (!audience) continue
+    const displayName = video.video_display_name?.trim() || video.name.trim() || 'Vidéo'
+    occurrences.push({
+      video,
+      audience,
+      campaign: campaignById.get(audience.campaign_id),
+      identityKey: displayName.toLowerCase(),
+      displayName,
+    })
+  }
+
+  // Une audience portant plusieurs vidéos DISTINCTES (identités différentes)
+  // est partagée. La même vidéo présente deux fois dans une audience reste
+  // une seule vidéo : audience attribuable, comptée une fois.
+  const identitiesByAudience = new Map<string, Set<string>>()
+  for (const o of occurrences) {
+    const keys = identitiesByAudience.get(o.audience.id) ?? new Set<string>()
+    keys.add(o.identityKey)
+    identitiesByAudience.set(o.audience.id, keys)
+  }
+  const sharedAudienceIds = new Set(
+    Array.from(identitiesByAudience.entries())
+      .filter(([, keys]) => keys.size > 1)
+      .map(([audienceId]) => audienceId)
+  )
+
+  return {
+    all: rankOccurrences(occurrences, sharedAudienceIds),
+    barbier: rankOccurrences(occurrences.filter((o) => o.audience.audience_type === 'barbier'), sharedAudienceIds),
+    coiffeur: rankOccurrences(occurrences.filter((o) => o.audience.audience_type === 'coiffeur'), sharedAudienceIds),
+  }
 }
 
 export default async function ComparisonPage({
