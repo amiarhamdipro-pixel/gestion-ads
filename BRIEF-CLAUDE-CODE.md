@@ -1206,20 +1206,25 @@ référence de STRUCTURE métier (vues, KPI, graphiques, tableaux), la charte
   pour garder ≥ 4,5:1 : succès `#047857`, attention `#B45309`, erreur
   `#B91C1C`.
 - **Bandeau d'en-tête sombre dans les deux thèmes** (`#100B16` nuit,
-  `#24142D` clair) : le logo, `public/amerys-icon.png`, est un tracé blanc
-  jamais recoloré.
-- **Logo** : `public/amerys-icon.png` est le symbole OFFICIEL Amerys Agency —
-  fichier identique octet pour octet à `logo/amerys-icone.png` du projet
-  Amerys Agency, même symbole que les icônes du dépôt AmerysAgency
-  (`src/app/icon.png`). Aucun monogramme « A » distinct n'existe dans les
-  assets locaux : aucun logo de substitution créé. Présenté dans un cercle
-  (symbole circulaire de la charte).
+  `#24142D` clair), cohérent avec le badge sombre du symbole officiel.
+- **Kit de marque officiel Amerys (novembre 2026)** — ressources centralisées
+  dans `public/brand/` et référencées UNIQUEMENT via `app/brand.ts`
+  (constantes) et `app/brand-image.ts` (lecture serveur pour `next/og`) :
+  - `amerys-icone.png` (512 px, symbole « M » en badge circulaire sombre) :
+    connexion / mot de passe oublié / réinitialisation / 404 / accès refusé
+    (`app/AuthShell.tsx`, 56 px), en-tête du dashboard (46 px), icône Apple
+    (180 px, coins sur `#09070E`), aperçu de partage ;
+  - `favicon-64.png` : icône d'onglet (`app/icon.tsx`, 64 px natif) et
+    `app/favicon.ico` (même PNG encapsulé en ICO, pour les clients qui
+    demandent `/favicon.ico` par défaut).
+  Copies à l'identique du kit (`Refonte Amerys Agency/logo/`). Logos
+  horizontal / carrés non utilisés (texte « AMERYS AGENCY · DIGITAL MEDIA »,
+  aucun emplacement dans ADS). Ancien symbole blanc `public/amerys-icon.png`
+  n'est plus référencé.
 - **Nom affiché** : « AMERYS ADS » partout (en-tête, connexion, titre
-  d'onglet, aperçus de partage).
-- **Favicon / icône Apple** : symbole officiel sur dégradé des violets de la
-  charte `#9560B4` → `#24142D`. **Aperçu de partage** : fond `#09070E`, halo
-  violet diffus, symbole dans un cercle `#100B16`, textes `#F5F0F8` /
-  `#DDD2E2`. `app/favicon.ico` (fichier statique historique) non régénéré.
+  d'onglet, aperçus de partage), constante `BRAND_NAME` de `app/brand.ts`.
+- **Aperçu de partage** : fond `#09070E`, halo violet diffus, symbole
+  officiel, textes `#F5F0F8` / `#DDD2E2`.
 - **Connexion** : champs 44 px / 16 px, bordure portée par la classe
   `.amerys-auth-input` (`app/globals.css`) pour un focus violet visible
   (contour 2 px + bordure) dans les deux thèmes ; bouton afficher/masquer et

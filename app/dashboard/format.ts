@@ -78,8 +78,8 @@ export const accent = indigo
 export const spendColor = indigo
 
 // Bandeau d'en-tête : sombre dans les deux thèmes (#100B16 nuit, #24142D
-// clair) — le logo officiel public/amerys-icon.png est un tracé blanc, jamais
-// recoloré. onDark* : textes et traits posés sur ce bandeau.
+// clair), cohérent avec le badge sombre du symbole officiel (app/brand.ts).
+// onDark* : textes et traits posés sur ce bandeau.
 export const headerBg = 'var(--ads-header-bg)'
 export const onDark = 'var(--ads-on-dark)'
 export const onDarkMuted = 'var(--ads-on-dark-muted)'

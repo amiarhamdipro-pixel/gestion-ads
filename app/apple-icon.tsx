@@ -1,16 +1,16 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { ImageResponse } from 'next/og'
+import { brandIconDataUri } from './brand-image'
 
 // Apple touch icon (écran d'accueil iOS/iPadOS, 180×180 — taille officielle
-// recommandée par Apple). Même source unique que icon.tsx (public/amerys-icon.png,
-// symbole officiel Amerys Agency, jamais redessiné/recoloré), composée sur un
-// dégradé des violets de la charte (#9560B4 -> #24142D), identique à icon.tsx.
+// recommandée par Apple). Source : symbole officiel du kit Amerys
+// (public/brand/amerys-icone.png, 512×512, voir app/brand.ts), réduit à
+// 180 px, jamais redessiné ni recoloré.
 // Fond OBLIGATOIREMENT opaque (pas de transparence) : iOS ne gère pas la
 // transparence sur cette icône et peut afficher les zones transparentes en
-// noir — contrainte technique documentée par Apple, pas un choix esthétique.
+// noir. Les coins transparents du badge circulaire sont donc posés sur le
+// fond principal de la charte (#09070E), proche du fond du badge.
 // iOS applique lui-même l'arrondi/l'ombre : aucun borderRadius ici.
-const logoSrc = `data:image/png;base64,${readFileSync(join(process.cwd(), 'public/amerys-icon.png')).toString('base64')}`
+const iconSrc = brandIconDataUri()
 
 export const size = { width: 180, height: 180 }
 export const contentType = 'image/png'
@@ -23,13 +23,11 @@ export default function AppleIcon() {
           width: '100%',
           height: '100%',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundImage: 'linear-gradient(135deg, #9560B4 0%, #24142D 100%)',
+          background: '#09070E',
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- rendu par Satori (next/og), pas le navigateur. */}
-        <img src={logoSrc} width={124} height={107} alt="" />
+        <img src={iconSrc} width={180} height={180} alt="" />
       </div>
     ),
     { ...size }

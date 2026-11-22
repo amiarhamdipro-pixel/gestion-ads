@@ -77,8 +77,8 @@
   --ads-border-strong: rgba(36, 20, 45, 0.22);
   --ads-accent-soft: #f1e7f7;
   --ads-on-accent: #ffffff;
-  /* Bandeau d'en-tête sombre dans les deux thèmes : le logo officiel
-     (public/amerys-icon.png) est un tracé blanc, jamais recoloré. */
+  /* Bandeau d'en-tête sombre dans les deux thèmes, cohérent avec le badge
+     sombre du symbole officiel (app/brand.ts). */
   --ads-header-bg: #24142d;
   --ads-success: #047857;
   --ads-warning: #b45309;

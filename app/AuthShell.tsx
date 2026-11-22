@@ -1,5 +1,6 @@
 import Image from 'next/image'
-import { fullscreenBg, headerBg, ink, line, muted, radius, shadow, surface } from './dashboard/format'
+import { BRAND_ICON_ALT, BRAND_ICON_SRC, BRAND_NAME, BRAND_SUBTITLE } from './brand'
+import { fullscreenBg, ink, line, muted, radius, shadow, surface } from './dashboard/format'
 
 // Habillage partagé par /login, /forgot-password et /update-password : même
 // carte, même arrière-plan, même bloc logo — un seul endroit à faire
@@ -36,23 +37,21 @@ export default function AuthShell({
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 28 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              // Symbole circulaire de la charte (logo officiel, tracé blanc).
-              borderRadius: '50%',
-              background: headerBg,
-              display: 'grid',
-              placeItems: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Image src="/amerys-icon.png" alt="Amerys" width={32} height={28} style={{ display: 'block' }} />
-          </div>
+          {/* Symbole officiel Amerys (kit 2026) : badge circulaire autonome
+              (fond sombre intégré), mêmes dimensions que l'ancien bloc logo
+              (56 px), centré au-dessus du nom. Chargement immédiat : visible
+              dès l'arrivée sur la page. */}
+          <Image
+            src={BRAND_ICON_SRC}
+            alt={BRAND_ICON_ALT}
+            width={56}
+            height={56}
+            loading="eager"
+            style={{ display: 'block', width: 56, height: 56, borderRadius: '50%', flexShrink: 0 }}
+          />
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 650, fontSize: 19, color: ink, letterSpacing: '.02em' }}>AMERYS ADS</div>
-            <div style={{ fontSize: 12.5, color: muted, marginTop: 2 }}>Marketing Dashboard</div>
+            <div style={{ fontWeight: 650, fontSize: 19, color: ink, letterSpacing: '.02em' }}>{BRAND_NAME}</div>
+            <div style={{ fontSize: 12.5, color: muted, marginTop: 2 }}>{BRAND_SUBTITLE}</div>
           </div>
         </div>
 

@@ -8,6 +8,7 @@
 // format.ts).
 import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import Image from 'next/image'
+import { BRAND_ICON_ALT, BRAND_ICON_SRC, BRAND_NAME, BRAND_SUBTITLE } from '../brand'
 import {
   formatDateTime,
   getMobileMenuOpen,
@@ -111,25 +112,21 @@ export default function Header({
             </svg>
           </button>
 
-          <div
-            style={{
-              width: 46,
-              height: 46,
-              borderRadius: '50%',
-              background: onDarkFill,
-              border: `1px solid ${onDarkLine}`,
-              display: 'grid',
-              placeItems: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Image src="/amerys-icon.png" alt="Amerys" width={28} height={24} style={{ display: 'block' }} />
-          </div>
+          {/* Symbole officiel Amerys (kit 2026) : badge circulaire autonome,
+              même emprise que l'ancien bloc logo (46 px). */}
+          <Image
+            src={BRAND_ICON_SRC}
+            alt={BRAND_ICON_ALT}
+            width={46}
+            height={46}
+            loading="eager"
+            style={{ display: 'block', width: 46, height: 46, borderRadius: '50%', flexShrink: 0 }}
+          />
           <div>
             <div style={{ fontWeight: 650, fontSize: 16, color: onDark, letterSpacing: '.02em', lineHeight: 1.15 }}>
-              AMERYS ADS
+              {BRAND_NAME}
             </div>
-            <div style={{ fontSize: 11.5, color: onDarkMuted, marginTop: 1 }}>Marketing Dashboard</div>
+            <div style={{ fontSize: 11.5, color: onDarkMuted, marginTop: 1 }}>{BRAND_SUBTITLE}</div>
           </div>
         </div>
 
